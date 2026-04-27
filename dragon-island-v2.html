@@ -172,6 +172,25 @@ canvas{display:block}
 #photo-frame{position:absolute;inset:8px;border:1px solid rgba(255,255,255,0.15);border-radius:2px;pointer-events:none}
 #photo-info{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.5);font-size:12px;letter-spacing:1px;text-shadow:0 1px 4px rgba(0,0,0,0.8);pointer-events:none}
 #photo-badge{position:absolute;top:16px;right:20px;color:rgba(255,255,255,0.6);font-size:13px;letter-spacing:2px;text-shadow:0 1px 4px rgba(0,0,0,0.8);pointer-events:none}
+#help-overlay,#map-overlay{position:fixed;inset:0;z-index:60;display:none;background:rgba(0,0,0,0.8);backdrop-filter:blur(6px);align-items:center;justify-content:center}
+.overlay-box{background:rgba(15,20,25,0.97);border:1px solid rgba(74,222,128,0.3);border-radius:14px;padding:24px;max-width:560px;width:90%;max-height:80vh;overflow-y:auto;color:#e2e8f0}
+.overlay-box h2{color:#4ade80;font-size:20px;margin-bottom:12px;text-align:center}
+.overlay-box .close-btn{position:absolute;top:12px;right:16px;color:#94a3b8;cursor:pointer;font-size:18px;border:none;background:none}
+.ctrl-grid{display:grid;grid-template-columns:80px 1fr;gap:6px 12px;font-size:13px}
+.ctrl-key{color:#fbbf24;font-weight:bold;text-align:right}
+.ctrl-desc{color:#cbd5e1}
+.ctrl-section{color:#4ade80;font-size:12px;letter-spacing:1px;margin-top:12px;margin-bottom:4px;grid-column:1/-1;border-top:1px solid rgba(255,255,255,0.08);padding-top:8px}
+#map-canvas{width:100%;height:400px;border-radius:8px;background:#0a1a2a}
+.map-legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;font-size:11px}
+.map-leg-item{display:flex;align-items:center;gap:4px}
+.map-leg-dot{width:8px;height:8px;border-radius:50%}
+.artefact-sec{margin-top:8px;padding:8px 10px;border-top:1px solid rgba(255,255,255,0.08)}
+.artefact-item{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:11px}
+.artefact-icon{width:12px;height:12px;background:#ffdd44;clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);flex-shrink:0}
+.artefact-icon.empty{background:#444;opacity:0.4}
+.artefact-name{color:#fbbf24}
+.artefact-name.empty{color:#666}
+.artefact-desc{color:#94a3b8;font-size:10px}
 </style>
 </head>
 <body>
@@ -233,6 +252,10 @@ canvas{display:block}
       <div class="item"><span>Dragon Feast<span class="scope"> Dragon +8xp</span></span><span class="ct" id="inv-dragonFeast">0</span></div>
       <div class="item"><span>Fish Stew<span class="scope"> Dragon +4xp</span></span><span class="ct" id="inv-fishStew">0</span></div>
     </div>
+    <div class="artefact-sec" id="artefact-sec">
+      <div class="sec-label">Artefacts</div>
+      <div id="artefact-list"></div>
+    </div>
   </div>
 </div>
 <div id="dragon-panel">
@@ -257,6 +280,46 @@ canvas{display:block}
 <div id="fishing-ui"><div class="fish-label">Fishing...</div><div id="fishing-bar"><div id="fishing-catch-zone"></div><div id="fishing-indicator"></div></div><div class="fish-hint">Press <b style="color:#fbbf24">E</b> in the green zone!</div></div>
 <canvas id="minimap" width="180" height="180"></canvas>
 <div id="quest-detail"><h3>ACTIVE QUEST</h3><div id="qd-title"></div><div id="qd-npc"></div><div id="qd-desc"></div><div id="qd-reqs"></div><div id="qd-hint"></div></div>
+<div id="help-overlay" onclick="closeHelp()"><div class="overlay-box" onclick="event.stopPropagation()"><h2>Controls &amp; Help</h2>
+<div class="ctrl-grid">
+<div class="ctrl-section">Movement</div>
+<div class="ctrl-key">W A S D</div><div class="ctrl-desc">Move</div>
+<div class="ctrl-key">Mouse</div><div class="ctrl-desc">Look around</div>
+<div class="ctrl-key">Space</div><div class="ctrl-desc">Jump / Fly up (when mounted)</div>
+<div class="ctrl-key">Shift</div><div class="ctrl-desc">Glide down (when mounted)</div>
+<div class="ctrl-section">Interaction</div>
+<div class="ctrl-key">E</div><div class="ctrl-desc">Interact / Gather / Talk to NPC</div>
+<div class="ctrl-key">R</div><div class="ctrl-desc">Call dragon &amp; mount (adult only)</div>
+<div class="ctrl-key">G</div><div class="ctrl-desc">Pet dragon (+trust)</div>
+<div class="ctrl-key">F</div><div class="ctrl-desc">Dragon help (gathers nearby) / Feed while riding</div>
+<div class="ctrl-section">Menus &amp; Modes</div>
+<div class="ctrl-key">Tab</div><div class="ctrl-desc">Decoration placement menu</div>
+<div class="ctrl-key">P</div><div class="ctrl-desc">Photo mode (free camera)</div>
+<div class="ctrl-key">M</div><div class="ctrl-desc">World map</div>
+<div class="ctrl-key">H</div><div class="ctrl-desc">This help screen</div>
+<div class="ctrl-key">Esc</div><div class="ctrl-desc">Close any menu / Exit photo mode</div>
+<div class="ctrl-section">Tips</div>
+</div>
+<div style="font-size:12px;color:#94a3b8;margin-top:8px;line-height:1.6">
+&bull; Feed your dragon apples/carrots to gain XP and evolve it<br>
+&bull; Cook food at the cooking pot for more dragon XP<br>
+&bull; Pet (G) and stay near your dragon to build trust<br>
+&bull; Talk to NPCs for quests and to buy/sell/gift items<br>
+&bull; Gift NPCs their favourite item for 3x friendship<br>
+&bull; Look for golden light beams — those are artefacts<br>
+&bull; Grow your dragon to Adult to fly to other islands (R to mount)
+</div></div></div>
+<div id="map-overlay" onclick="closeMap()"><div class="overlay-box" style="max-width:650px" onclick="event.stopPropagation()"><h2>World Map</h2><canvas id="map-canvas" width="600" height="400"></canvas>
+<div class="map-legend">
+<div class="map-leg-item"><div class="map-leg-dot" style="background:#4ade80"></div>You</div>
+<div class="map-leg-item"><div class="map-leg-dot" style="background:#fbbf24"></div>NPC</div>
+<div class="map-leg-item"><div class="map-leg-dot" style="background:#ff4444"></div>Dragon</div>
+<div class="map-leg-item"><div class="map-leg-dot" style="background:#ffdd44"></div>Artefact</div>
+<div class="map-leg-item"><div class="map-leg-dot" style="background:#44aaff"></div>Fishing</div>
+<div class="map-leg-item"><div class="map-leg-dot" style="background:#a78bfa"></div>Quest target</div>
+</div>
+<div id="map-artefacts"></div>
+</div></div>
 <div id="npc-menu"><div class="npc-box">
   <div class="npc-hdr"><h2 id="npc-title">NPC</h2><button class="npc-close" onclick="closeNPCMenu()">Close</button></div>
   <div class="npc-tabs">
@@ -1102,13 +1165,13 @@ function setupScene() {
   skyDome = new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({vertexColors:true, side:THREE.BackSide}));
   scene.add(skyDome);
   skyBaseColors = new Float32Array(skyCol);
-  sunVisRef = new THREE.Mesh(new THREE.SphereGeometry(12,16,16), new THREE.MeshBasicMaterial({color:0xffffdd}));
+  sunVisRef = new THREE.Mesh(new THREE.SphereGeometry(40,16,16), new THREE.MeshBasicMaterial({color:0xffffdd}));
   sunVisRef.position.set(200,150,100); scene.add(sunVisRef);
   sunGlowRef = new THREE.Mesh(new THREE.SphereGeometry(30,16,16), new THREE.MeshBasicMaterial({color:0xffeeaa,transparent:true,opacity:0.12}));
   sunGlowRef.position.copy(sunVisRef.position); scene.add(sunGlowRef);
-  moonVisRef = new THREE.Mesh(new THREE.SphereGeometry(8,16,16), new THREE.MeshBasicMaterial({color:0xddeeff}));
+  moonVisRef = new THREE.Mesh(new THREE.SphereGeometry(25,16,16), new THREE.MeshBasicMaterial({color:0xddeeff}));
   moonVisRef.visible=false; scene.add(moonVisRef);
-  moonLight = new THREE.PointLight(0x4466aa,0,800);
+  moonLight = new THREE.PointLight(0x4466aa,0,1200);
   moonLight.position.set(-200,120,-100); scene.add(moonLight);
   const starGeo=new THREE.BufferGeometry();const starVerts=new Float32Array(600*3);
   for(let i=0;i<600;i++){const th=Math.random()*Math.PI*2,ph=Math.random()*Math.PI*0.48+0.05,r=1800;starVerts[i*3]=r*Math.sin(ph)*Math.cos(th);starVerts[i*3+1]=r*Math.cos(ph);starVerts[i*3+2]=r*Math.sin(ph)*Math.sin(th)}
@@ -1435,18 +1498,31 @@ function mendBuilding(id) {
 }
 
 // ===== ARTEFACT =====
+const ARTEFACT_INFO={
+  compass:{name:'Ancient Compass',desc:'A Flametender heirloom that points toward dragon energy. Reveals nearby resources on minimap.'},
+  hammer:{name:'Stoneforger Hammer',desc:'A mason\'s tool imbued with earth magic. Increases stone/iron yield by +1.'},
+  crystal:{name:'Nature Crystal',desc:'A crystallized fragment of dragon breath. Boosts dragon trust gain by 50%.'}
+};
 function createArtefact(wx, wz, id) {
   const g = new THREE.Group();
   const h = getTerrainHeight(wx, wz);
   const mat = new THREE.MeshPhongMaterial({color:0xffdd44,emissive:0xffaa00,emissiveIntensity:0.5,flatShading:true,shininess:100});
-  const shape = new THREE.Mesh(new THREE.OctahedronGeometry(0.35,0), mat);
+  const shape = new THREE.Mesh(new THREE.OctahedronGeometry(0.5,0), mat);
   shape.position.y = 1.5; g.add(shape);
-  g.add(new THREE.PointLight(0xffdd44,0.5,10)).position.y=1.5;
+  g.add(new THREE.PointLight(0xffdd44,0.8,15)).position.y=1.5;
+  const beamGeo=new THREE.CylinderGeometry(0.15,0.4,25,8,1,true);
+  const beamMat=new THREE.MeshBasicMaterial({color:0xffdd44,transparent:true,opacity:0.15,side:THREE.DoubleSide});
+  const beam=new THREE.Mesh(beamGeo,beamMat);beam.position.y=14;g.add(beam);
+  const beamCore=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.15,25,6,1,true),new THREE.MeshBasicMaterial({color:0xffffaa,transparent:true,opacity:0.3}));
+  beamCore.position.y=14;g.add(beamCore);
+  const baseGlow=new THREE.Mesh(new THREE.RingGeometry(0.5,1.5,16),new THREE.MeshBasicMaterial({color:0xffdd44,transparent:true,opacity:0.2,side:THREE.DoubleSide}));
+  baseGlow.rotation.x=-Math.PI/2;baseGlow.position.y=0.1;g.add(baseGlow);
   g.position.set(wx, h, wz);
   scene.add(g);
+  const info=ARTEFACT_INFO[id]||{name:id,desc:''};
   const obj = {type:'artefact', group:g, x:wx, z:wz, id, collected:false, shape,
-    interact(){if(this.collected)return;this.collected=true;this.group.visible=false;foundArtefacts.add(this.id);spawnBurst(new THREE.Vector3(wx,h+2,wz),[0xffd700,0xffffaa],15);notify('Found the '+this.id+'!','epic')},
-    getPrompt(){return this.collected?null:'Collect '+this.id}
+    interact(){if(this.collected)return;this.collected=true;this.group.visible=false;foundArtefacts.add(this.id);spawnBurst(new THREE.Vector3(wx,h+2,wz),[0xffd700,0xffffaa],25);notify('Found '+info.name+'!','epic');setTimeout(()=>notify(info.desc),1500)},
+    getPrompt(){return this.collected?null:'Collect '+info.name}
   };
   interactables.push(obj);
   return obj;
@@ -1483,15 +1559,17 @@ function mkAppleTree(x,z){return createResourceNode(x,z,{type:'apple_tree',name:
   build(g){const tm=makePhong(0x8B5A2B);g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.35,3,8),tm)).position.y=1.5;
     const fm=makePhong(0x2d8a4e);g.add(new THREE.Mesh(new THREE.SphereGeometry(2,8,8),fm)).position.y=3.8;
     g.add(new THREE.Mesh(new THREE.SphereGeometry(1.4,7,7),makePhong(0x3a9a58))).position.set(0.6,4.3,0.3)},
-  visuals(g){const ag=new THREE.Group();const am=makePhong(0xdd3333,{shininess:60});
-    for(let i=0;i<5;i++){const a=new THREE.Mesh(new THREE.SphereGeometry(0.14,6,6),am);a.position.set(Math.cos(i/5*Math.PI*2)*1.2,3+Math.sin(i*1.7)*0.5,Math.sin(i/5*Math.PI*2)*1.2);ag.add(a)}
+  visuals(g){const ag=new THREE.Group();const am=makePhong(0xdd3333,{shininess:60,emissive:0x441111,emissiveIntensity:0.2});
+    const applePos=[[1.8,3.0,0.3],[-1.5,3.2,1.2],[0.4,2.8,1.7],[-0.8,3.4,-1.5],[1.2,2.9,-1.3],[-1.6,3.1,-0.5],[0.9,3.5,1.4]];
+    for(const[ax,ay,az] of applePos){const a=new THREE.Mesh(new THREE.SphereGeometry(0.22,6,6),am);a.position.set(ax,ay,az);ag.add(a)}
     g.add(ag);return[ag]}})}
 // Berry Bush
 function mkBerryBush(x,z){return createResourceNode(x,z,{type:'berry_bush',name:'Berries',resource:'berry',amount:2,category:'forage',pColor:0x6633cc,pHeight:1.5,
   build(g){const lm=makePhong(0x337744);g.add(new THREE.Mesh(new THREE.SphereGeometry(0.9,8,6),lm)).position.y=0.8;
     g.add(new THREE.Mesh(new THREE.SphereGeometry(0.7,7,5),makePhong(0x2d6b3a))).position.set(0.4,1.1,0.3)},
-  visuals(g){const bg=new THREE.Group();const bm=makePhong(0x6633cc,{shininess:40});
-    for(let i=0;i<6;i++){const b=new THREE.Mesh(new THREE.SphereGeometry(0.08,5,5),bm);b.position.set(Math.cos(i)*0.6,0.6+Math.sin(i*2)*0.3,Math.sin(i)*0.6);bg.add(b)}
+  visuals(g){const bg=new THREE.Group();const bm=makePhong(0x8833dd,{shininess:50,emissive:0x331166,emissiveIntensity:0.2});
+    const berryPos=[[0.7,0.5,0.2],[-0.5,0.7,0.6],[0.3,0.9,-0.6],[-0.6,0.5,-0.4],[0.6,0.8,-0.2],[-0.3,0.6,0.7],[0,1.0,0.5],[0.5,0.4,-0.5]];
+    for(const[bx,by,bz] of berryPos){const b=new THREE.Mesh(new THREE.SphereGeometry(0.12,5,5),bm);b.position.set(bx,by,bz);bg.add(b)}
     g.add(bg);return[bg]}})}
 // Herb Patch
 function mkHerbPatch(x,z){return createResourceNode(x,z,{type:'herb_patch',name:'Herbs',resource:'herb',amount:2,category:'forage',pColor:0x44cc44,pHeight:0.8,
@@ -1532,16 +1610,14 @@ function mkChoppableTree(x,z){
   const g=new THREE.Group();
   const h=getTerrainHeight(x,z);
   if(h<0.3)return null;
-  const tm=makePhong(0x6B3A1F);
-  const trunk=new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.5,5,8),tm);
-  trunk.position.y=2.5;trunk.castShadow=true;g.add(trunk);
-  const bm=makePhong(0x5C3015);
-  const b1=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.1,1.2,5),bm);b1.position.set(0.35,3.2,0);b1.rotation.z=-0.6;g.add(b1);
-  const b2=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.09,1,5),bm);b2.position.set(-0.3,3.8,0.2);b2.rotation.z=0.5;g.add(b2);
-  const fm=makePhong(0x1a6630);
-  const crown=new THREE.Mesh(new THREE.SphereGeometry(2.2,8,8),fm);crown.position.y=5.5;crown.scale.set(1,1.3,1);crown.castShadow=true;g.add(crown);
-  const crown2=new THREE.Mesh(new THREE.SphereGeometry(1.5,7,7),makePhong(0x237a3a));crown2.position.set(0.5,6.2,0.4);g.add(crown2);
-  const stump=new THREE.Mesh(new THREE.CylinderGeometry(0.35,0.5,0.5,8),tm);stump.position.y=0.25;stump.userData.isStump=true;g.add(stump);
+  const tm=makePhong(0x5C3015);
+  const trunk=new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.4,6,8),tm);
+  trunk.position.y=3;trunk.castShadow=true;g.add(trunk);
+  const fm=makePhong(0x1a5528);
+  const c1=new THREE.Mesh(new THREE.ConeGeometry(2.2,3.5,8),fm);c1.position.y=4.5;c1.castShadow=true;g.add(c1);
+  const c2=new THREE.Mesh(new THREE.ConeGeometry(1.7,3,8),makePhong(0x1e6630));c2.position.y=6.5;c2.castShadow=true;g.add(c2);
+  const c3=new THREE.Mesh(new THREE.ConeGeometry(1.1,2.5,8),makePhong(0x237a3a));c3.position.y=8.2;g.add(c3);
+  const stump=new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.45,0.5,8),tm);stump.position.y=0.25;stump.userData.isStump=true;g.add(stump);
   g.position.set(x,h,z);scene.add(g);
   g.userData.origY=h;g.userData.shakeTimer=0;
   const obj={type:'choppable_tree',group:g,x,z,hasItems:true,respawnTimer:0,
@@ -2126,6 +2202,8 @@ function updateUI(){
   for(const r of ['apple','berry','herb','mushroom','wood','fish','wheat','carrot','stone','iron','crystal','berryPie','herbStew','dragonFeast','fishStew']){
     const el=document.getElementById('inv-'+r);if(el)el.textContent=inv[r]||0}
   document.getElementById('cooked-sec').style.display=(inv.berryPie||inv.herbStew||inv.dragonFeast||inv.fishStew)?'block':'none';
+  // Artefact list in inventory
+  const artEl=document.getElementById('artefact-list');if(artEl&&foundArtefacts.size>0){const arts=[{id:'compass',n:'Ancient Compass'},{id:'hammer',n:'Stoneforger Hammer'},{id:'crystal',n:'Nature Crystal'}];let ah='';arts.forEach(a=>{const f=foundArtefacts.has(a.id);ah+='<div class="artefact-item"><div class="artefact-icon'+(f?'':' empty')+'"></div><span class="artefact-name'+(f?'':' empty')+'">'+(f?a.n:'???')+'</span></div>'});artEl.innerHTML=ah}
   const sp=SPECIES[dragon.species];
   document.getElementById('dr-species').textContent=sp.name;
   document.getElementById('dr-stage').textContent={kid:'Baby',teen:'Teen',adult:'Adult'}[dragon.stage];
@@ -2474,11 +2552,11 @@ function updateDayNight(dt){
   else if(t<0.70){phase='afternoon';phaseName='Afternoon';phaseIcon='\u{1F324}️'}
   else if(t<0.80){phase='dusk';phaseName='Dusk';phaseIcon='\u{1F307}'}
   else{phase='night';phaseName='Night';phaseIcon='\u{1F319}'}
-  const sunAngle=t*Math.PI*2,sR=200,tgt=isRiding?dragonGroup.position:playerPos;
-  const sX=tgt.x+Math.cos(sunAngle)*sR*0.3,sY=Math.sin(sunAngle)*sR,sZ=tgt.z+Math.sin(sunAngle)*sR*0.6;
+  const sunAngle=t*Math.PI*2,sR=900,tgt=isRiding?dragonGroup.position:playerPos;
+  const sX=tgt.x+Math.cos(sunAngle)*sR*0.4,sY=Math.sin(sunAngle)*sR,sZ=tgt.z+Math.sin(sunAngle)*sR*0.6;
   if(sY>-10){sun.position.set(sX,Math.max(sY,5),sZ);sun.target.position.copy(tgt)}
   if(sunVisRef){sunVisRef.position.set(sX,sY,sZ);sunGlowRef.position.copy(sunVisRef.position);sunVisRef.visible=sY>-20;sunGlowRef.visible=sY>-20}
-  const mA=sunAngle+Math.PI,mX=tgt.x+Math.cos(mA)*sR*0.3,mY=Math.sin(mA)*sR*0.8,mZ=tgt.z+Math.sin(mA)*sR*0.5;
+  const mA=sunAngle+Math.PI,mX=tgt.x+Math.cos(mA)*sR*0.4,mY=Math.sin(mA)*sR*0.8,mZ=tgt.z+Math.sin(mA)*sR*0.6;
   if(moonVisRef){moonVisRef.position.set(mX,mY,mZ);moonVisRef.visible=mY>-20}
   const el=Math.sin(sunAngle),sf=Math.max(0,Math.min(1,(el+0.15)/1.15)),nf=1-sf;
   if(sf>0.5)_tc1.lerpColors(DN_SUN_A,DN_SUN_B,(sf-0.5)*2);
@@ -2537,8 +2615,8 @@ function updateWorld(dt){
   const wp=waterGeo.attributes.position;
   for(let i=0;i<wp.count;i++){const x=wp.getX(i),z=wp.getZ(i);wp.setY(i,Math.sin(x*0.04+elapsed*0.8)*0.3+Math.cos(z*0.05+elapsed*0.6)*0.2)}
   wp.needsUpdate=true;
-  // Artefact spin
-  interactables.forEach(obj=>{if(obj.type==='artefact'&&!obj.collected&&obj.shape){obj.shape.rotation.y=elapsed*2;obj.shape.position.y=1.5+Math.sin(elapsed*1.5)*0.3}});
+  // Artefact spin + beam pulse
+  interactables.forEach(obj=>{if(obj.type==='artefact'&&!obj.collected&&obj.shape){obj.shape.rotation.y=elapsed*2;obj.shape.position.y=1.5+Math.sin(elapsed*1.5)*0.3;const ch=obj.group.children;for(let i=0;i<ch.length;i++){if(ch[i].material&&ch[i].material.opacity&&ch[i].geometry&&ch[i].geometry.type==='CylinderGeometry'){ch[i].material.opacity=0.1+Math.sin(elapsed*2+i)*0.08}}}});
   // Choppable tree shake animation
   interactables.forEach(obj=>{if(obj.type==='choppable_tree'&&obj.group.userData.shakeTimer>0){obj.group.userData.shakeTimer-=dt;const st=obj.group.userData.shakeTimer;obj.group.rotation.z=Math.sin(st*30)*0.08*(st/0.6);if(st<=0){obj.group.rotation.z=0}}});
   // Fishing spot ripple + glow animation
@@ -2600,6 +2678,54 @@ function closeDecoMenu(){
   document.getElementById('deco-menu').style.display='none';
   menuOpen=false;
   renderer.domElement.requestPointerLock();
+}
+// Help overlay
+function openHelp(){document.getElementById('help-overlay').style.display='flex';menuOpen=true;document.exitPointerLock()}
+function closeHelp(){document.getElementById('help-overlay').style.display='none';menuOpen=false;renderer.domElement.requestPointerLock()}
+// Map overlay
+function openMap(){
+  document.getElementById('map-overlay').style.display='flex';menuOpen=true;document.exitPointerLock();
+  drawWorldMap();updateArtefactDisplay();
+}
+function closeMap(){document.getElementById('map-overlay').style.display='none';menuOpen=false;renderer.domElement.requestPointerLock()}
+function drawWorldMap(){
+  const c=document.getElementById('map-canvas'),ctx=c.getContext('2d');
+  ctx.fillStyle='#0a1a2a';ctx.fillRect(0,0,c.width,c.height);
+  const scale=0.22,ox=c.width/2,oy=c.height/2;
+  function tx(x){return ox+x*scale}function ty(z){return oy+z*scale}
+  // Islands
+  ISLANDS.forEach(isl=>{
+    ctx.beginPath();ctx.arc(tx(isl.cx),ty(isl.cz),isl.radius*scale*0.7,0,Math.PI*2);
+    ctx.fillStyle=isl.id==='home'?'#1a3a2a':'#152a20';ctx.fill();
+    ctx.strokeStyle='rgba(74,222,128,0.3)';ctx.lineWidth=1;ctx.stroke();
+    ctx.fillStyle='#4ade80';ctx.font='11px monospace';ctx.textAlign='center';
+    ctx.fillText(isl.name,tx(isl.cx),ty(isl.cz)-isl.radius*scale*0.7-6);
+  });
+  // NPCs
+  interactables.forEach(obj=>{if(obj.type==='npc'){ctx.beginPath();ctx.arc(tx(obj.x),ty(obj.z),4,0,Math.PI*2);ctx.fillStyle='#fbbf24';ctx.fill()}});
+  // Artefacts
+  interactables.forEach(obj=>{if(obj.type==='artefact'&&!obj.collected){ctx.beginPath();ctx.arc(tx(obj.x),ty(obj.z),5,0,Math.PI*2);ctx.fillStyle='#ffdd44';ctx.fill();ctx.beginPath();ctx.moveTo(tx(obj.x),ty(obj.z)-12);ctx.lineTo(tx(obj.x),ty(obj.z)-5);ctx.strokeStyle='#ffdd44';ctx.lineWidth=2;ctx.stroke()}});
+  // Fishing
+  interactables.forEach(obj=>{if(obj.type==='fishing_spot'){ctx.beginPath();ctx.arc(tx(obj.x),ty(obj.z),3,0,Math.PI*2);ctx.fillStyle='#44aaff';ctx.fill()}});
+  // Dragon
+  ctx.beginPath();ctx.arc(tx(dragon.pos.x),ty(dragon.pos.z),5,0,Math.PI*2);ctx.fillStyle='#ff4444';ctx.fill();
+  // Player
+  ctx.beginPath();ctx.arc(tx(playerPos.x),ty(playerPos.z),5,0,Math.PI*2);ctx.fillStyle='#4ade80';ctx.fill();
+  ctx.beginPath();ctx.arc(tx(playerPos.x),ty(playerPos.z),8,0,Math.PI*2);ctx.strokeStyle='#4ade80';ctx.lineWidth=2;ctx.stroke();
+  // Quest target
+  const aq=getActiveQuest();if(aq){const qt=getQuestTarget(aq);if(qt){ctx.beginPath();ctx.arc(tx(qt.x),ty(qt.z),6,0,Math.PI*2);ctx.strokeStyle='#a78bfa';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#a78bfa';ctx.font='10px monospace';ctx.textAlign='center';ctx.fillText(qt.label||'Quest',tx(qt.x),ty(qt.z)-10)}}
+}
+function updateArtefactDisplay(){
+  const el=document.getElementById('map-artefacts');
+  const all=[{id:'compass',name:'Ancient Compass',desc:'Reveals nearby resources on minimap'},{id:'hammer',name:'Stoneforger Hammer',desc:'Increases stone/iron yield by +1'},{id:'crystal',name:'Nature Crystal',desc:'Boosts dragon trust gain by 50%'}];
+  let html='<div class="artefact-sec"><div class="sec-label" style="color:#fbbf24">Artefacts Found</div>';
+  all.forEach(a=>{const found=foundArtefacts.has(a.id);
+    html+='<div class="artefact-item"><div class="artefact-icon'+(found?'':' empty')+'"></div><span class="artefact-name'+(found?'':' empty')+'">'+(found?a.name:'???')+'</span><span class="artefact-desc">'+(found?a.desc:'Not yet discovered')+'</span></div>';
+  });
+  html+='</div>';el.innerHTML=html;
+  // Also update inventory artefact section
+  const invEl=document.getElementById('artefact-list');
+  if(invEl){let ih='';all.forEach(a=>{const found=foundArtefacts.has(a.id);ih+='<div class="artefact-item"><div class="artefact-icon'+(found?'':' empty')+'"></div><span class="artefact-name'+(found?'':' empty')+'">'+(found?a.name:'???')+'</span></div>'});invEl.innerHTML=ih}
 }
 function renderDecoMenu(){
   const grid=document.getElementById('deco-grid');
@@ -2736,9 +2862,11 @@ function updatePhotoMode(dt){
 // ===== CONTROLS =====
 function setupControls(){
   document.addEventListener('keydown',e=>{
-    if(e.key==='Escape'){if(photoMode){togglePhotoMode();return}if(decoPlacing){cancelDecoPlacement();return}if(fishingActive){cancelFishing();return}if(menuOpen){if(document.getElementById('npc-menu').style.display==='flex')closeNPCMenu();else if(document.getElementById('cook-menu').style.display==='flex')closeCookMenu();else if(document.getElementById('deco-menu').style.display==='flex')closeDecoMenu();return}}
+    if(e.key==='Escape'){if(photoMode){togglePhotoMode();return}if(decoPlacing){cancelDecoPlacement();return}if(fishingActive){cancelFishing();return}if(document.getElementById('help-overlay').style.display==='flex'){closeHelp();return}if(document.getElementById('map-overlay').style.display==='flex'){closeMap();return}if(menuOpen){if(document.getElementById('npc-menu').style.display==='flex')closeNPCMenu();else if(document.getElementById('cook-menu').style.display==='flex')closeCookMenu();else if(document.getElementById('deco-menu').style.display==='flex')closeDecoMenu();return}}
     if(e.key==='Tab'&&gameStarted&&!menuOpen&&!photoMode&&!fishingActive){e.preventDefault();openDecoMenu();return}
     if(e.key.toLowerCase()==='p'&&gameStarted&&!menuOpen&&!decoPlacing&&!fishingActive){togglePhotoMode();return}
+    if(e.key.toLowerCase()==='h'&&gameStarted&&!menuOpen&&!photoMode&&!fishingActive){openHelp();return}
+    if(e.key.toLowerCase()==='m'&&gameStarted&&!menuOpen&&!photoMode&&!fishingActive){openMap();return}
     if(menuOpen)return;
     keys[e.key.toLowerCase()]=true;
     if(photoMode)return;
