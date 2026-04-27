@@ -174,6 +174,8 @@ canvas{display:block}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
+// Fix .add() to return child (Three.js returns parent, breaking chained .position calls)
+const _oa=THREE.Object3D.prototype.add;THREE.Object3D.prototype.add=function(o){_oa.apply(this,arguments);return arguments.length===1?o:this};
 // ===== CONFIG =====
 const CFG = {
   WATER_LEVEL: -0.3,
@@ -883,8 +885,8 @@ function createFarmPlot(wx, wz) {
         else if(inv.carrotSeeds>0){inv.carrotSeeds--;this.cropType='carrot';this.state='growing';this.growTimer=CFG.CROP_GROW*(upgrades.garden?0.6:1);this.updateVis();notify('Planted carrot!')}
         else notify('Need seeds! Buy from NPCs.','warn')
       } else if(this.state==='mature'){
-        const amt=this.cropType==='wheat'?3:2;inv[this.cropType]+=amt;this.state='empty';this.cropType=null;this.updateVis();
-        spawnParticles(new THREE.Vector3(wx,h+1,wz),0xffcc00,8,2,3,1,0.1);notify('+'+amt+' '+(this.cropType||'crops')+'!')}
+        const ct=this.cropType;const amt=ct==='wheat'?3:2;inv[ct]+=amt;this.state='empty';this.cropType=null;this.updateVis();
+        spawnParticles(new THREE.Vector3(wx,h+1,wz),0xffcc00,8,2,3,1,0.1);notify('+'+amt+' '+ct+'!')}
     },
     getPrompt(){
       if(this.state==='empty')return inv.wheatSeeds>0||inv.carrotSeeds>0?'Plant Seeds':'Need Seeds';
@@ -1399,6 +1401,7 @@ function selectEgg(el){
 function startGame(){
   if(!selectedSpecies)return;
   dragon.species=selectedSpecies;
+  scene.remove(dragonGroup);dragonGroup=createDragonModel(dragon.species,dragon.stage);dragonGroup.position.copy(dragon.pos);dragonGroup.position.y=getTerrainHeight(dragon.pos.x,dragon.pos.z);scene.add(dragonGroup);
   document.getElementById('start-screen').style.display='none';
   document.getElementById('hud').style.display='block';
   document.getElementById('dragon-panel').style.display='block';
