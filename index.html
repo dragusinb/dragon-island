@@ -1,0 +1,2239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dragon Island</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { overflow: hidden; background: #000; font-family: 'Segoe UI', Arial, sans-serif; }
+canvas { display: block; }
+
+#start-screen {
+  position: fixed; inset: 0; z-index: 100;
+  background: linear-gradient(135deg, #1a3a2a 0%, #0d1f15 50%, #1a2a3a 100%);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  cursor: pointer; user-select: none;
+}
+#start-screen h1 {
+  font-size: 64px; color: #4ade80; text-shadow: 0 0 40px #22c55e88, 0 4px 8px #00000088;
+  letter-spacing: 6px; margin-bottom: 12px;
+}
+#start-screen h2 {
+  font-size: 22px; color: #86efac; margin-bottom: 40px; font-weight: 300; letter-spacing: 2px;
+}
+#start-screen .subtitle {
+  font-size: 18px; color: #a7f3d0; animation: pulse 2s infinite; margin-bottom: 30px;
+}
+#start-screen .controls-info {
+  color: #6ee7b7; font-size: 14px; line-height: 2; opacity: 0.8;
+  background: rgba(0,0,0,0.3); padding: 20px 30px; border-radius: 12px;
+}
+#start-screen .controls-info span { color: #fbbf24; font-weight: bold; }
+@keyframes pulse { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
+
+#hud {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 10; pointer-events: none;
+  display: none; padding: 16px;
+}
+#inventory {
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
+  border: 1px solid rgba(74,222,128,0.3); border-radius: 12px;
+  padding: 14px 18px; color: #e2e8f0; font-size: 14px;
+  display: inline-block; min-width: 180px;
+}
+#inventory h3 { color: #4ade80; font-size: 13px; margin-bottom: 8px; letter-spacing: 1px; }
+#inventory .item { display: flex; justify-content: space-between; padding: 3px 0; }
+#inventory .item .count { color: #fbbf24; font-weight: bold; }
+
+#dragon-panel {
+  position: fixed; top: 16px; right: 16px; z-index: 10; pointer-events: none; display: none;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
+  border: 1px solid rgba(251,191,36,0.3); border-radius: 12px;
+  padding: 14px 18px; color: #e2e8f0; font-size: 14px; min-width: 200px;
+}
+#dragon-panel h3 { color: #fbbf24; font-size: 13px; margin-bottom: 8px; letter-spacing: 1px; }
+#dragon-panel .stat { display: flex; justify-content: space-between; padding: 3px 0; }
+#dragon-panel .val { color: #4ade80; font-weight: bold; }
+#progress-bar {
+  width: 100%; height: 8px; background: rgba(255,255,255,0.1);
+  border-radius: 4px; margin-top: 8px; overflow: hidden;
+}
+#progress-fill {
+  height: 100%; background: linear-gradient(90deg, #22c55e, #fbbf24);
+  border-radius: 4px; transition: width 0.5s;
+}
+
+#prompt {
+  position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+  z-index: 10; display: none; pointer-events: none;
+  background: rgba(0,0,0,0.7); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.2); border-radius: 8px;
+  padding: 10px 20px; color: #fff; font-size: 15px; white-space: nowrap;
+}
+#prompt span { color: #fbbf24; font-weight: bold; }
+
+#notifications {
+  position: fixed; top: 50%; right: 16px; transform: translateY(-50%);
+  z-index: 10; pointer-events: none; display: flex; flex-direction: column; gap: 8px;
+}
+.notification {
+  background: rgba(0,0,0,0.7); border-left: 3px solid #4ade80;
+  border-radius: 6px; padding: 10px 16px; color: #e2e8f0; font-size: 14px;
+  animation: notifIn 0.3s ease-out, notifOut 0.5s ease-in 2.5s forwards;
+  max-width: 280px;
+}
+.notification.warn { border-left-color: #f59e0b; }
+.notification.epic { border-left-color: #a855f7; }
+@keyframes notifIn { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes notifOut { to { opacity: 0; transform: translateX(30px); } }
+
+#crosshair {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 4px; height: 4px; background: rgba(255,255,255,0.5);
+  border-radius: 50%; z-index: 10; display: none; pointer-events: none;
+}
+
+#armor-display {
+  position: fixed; bottom: 16px; left: 16px; z-index: 10; pointer-events: none; display: none;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
+  border: 1px solid rgba(168,85,247,0.3); border-radius: 12px;
+  padding: 14px 18px; color: #e2e8f0; font-size: 14px;
+}
+#armor-display h3 { color: #a855f7; font-size: 13px; margin-bottom: 6px; letter-spacing: 1px; }
+
+#help-toggle {
+  position: fixed; bottom: 16px; right: 16px; z-index: 10;
+  background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 8px; padding: 8px 14px; color: #94a3b8; font-size: 13px;
+  cursor: pointer; display: none;
+}
+</style>
+</head>
+<body>
+
+<div id="start-screen">
+  <h1>DRAGON ISLAND</h1>
+  <h2>Befriend a Dragon. Build Your Legend.</h2>
+  <div class="subtitle">Click to Play</div>
+  <div class="controls-info">
+    <span>WASD</span> Move &nbsp;&bull;&nbsp;
+    <span>Mouse</span> Look &nbsp;&bull;&nbsp;
+    <span>E</span> Interact &nbsp;&bull;&nbsp;
+    <span>Space</span> Jump / Fly Up<br>
+    <span>Shift</span> Fly Down &nbsp;&bull;&nbsp;
+    <span>C</span> Craft Armor &nbsp;&bull;&nbsp;
+    <span>F</span> Dragon Help &nbsp;&bull;&nbsp;
+    <span>ESC</span> Release Mouse
+  </div>
+</div>
+
+<div id="hud">
+  <div id="inventory">
+    <h3>INVENTORY</h3>
+    <div class="item"><span>Apples</span><span class="count" id="inv-apples">0</span></div>
+    <div class="item"><span>Fruits</span><span class="count" id="inv-fruits">0</span></div>
+    <div class="item"><span>Minerals</span><span class="count" id="inv-minerals">0</span></div>
+    <div class="item"><span>Crops</span><span class="count" id="inv-crops">0</span></div>
+  </div>
+</div>
+
+<div id="dragon-panel">
+  <h3>DRAGON</h3>
+  <div class="stat"><span>Stage</span><span class="val" id="dr-stage">---</span></div>
+  <div class="stat"><span>Apples Fed</span><span class="val" id="dr-fed">0</span></div>
+  <div class="stat"><span>Next Stage</span><span class="val" id="dr-next">5 apples</span></div>
+  <div id="progress-bar"><div id="progress-fill" style="width:0%"></div></div>
+</div>
+
+<div id="prompt"><span>E</span> <span id="prompt-text">Interact</span></div>
+<div id="notifications"></div>
+<div id="crosshair"></div>
+
+<div id="armor-display">
+  <h3>ARMOR</h3>
+  <div id="armor-text">None</div>
+</div>
+
+<div id="help-toggle">H - Help</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ===================== CONFIG =====================
+const CFG = {
+  ISLAND_RADIUS: 120,
+  TERRAIN_SEGMENTS: 128,
+  WATER_LEVEL: -0.3,
+  PLAYER_SPEED: 18,
+  PLAYER_RUN_SPEED: 28,
+  JUMP_FORCE: 12,
+  GRAVITY: 30,
+  CAM_DISTANCE: 18,
+  CAM_HEIGHT: 8,
+  CAM_SENSITIVITY: 0.002,
+  INTERACT_RANGE: 6,
+  DRAGON_FOLLOW_DIST: 5,
+  DRAGON_KID_TO_TEEN: 5,
+  DRAGON_TEEN_TO_ADULT: 15,
+  APPLE_RESPAWN: 25,
+  FRUIT_RESPAWN: 30,
+  MINERAL_RESPAWN: 40,
+  CROP_GROW_TIME: 45,
+  ARMOR_COST: [10, 25, 50],
+};
+
+// ===================== GLOBALS =====================
+let scene, camera, renderer, clock;
+let terrain, water, waterGeo;
+let playerGroup;
+let dragonGroup;
+let sun;
+const keys = {};
+let cameraYaw = 0, cameraPitch = 0.35;
+let playerPos = new THREE.Vector3(0, 0, 0);
+let playerVelY = 0;
+let playerFacing = 0;
+let isGrounded = true;
+let isRiding = false;
+let isFlying = false;
+let gameStarted = false;
+let walkCycle = 0;
+let dragonAnimCycle = 0;
+let skyDome;
+
+const inventory = { apples: 0, fruits: 0, minerals: 0, crops: 0 };
+const dragon = {
+  stage: 'kid', fedApples: 0, befriended: false,
+  pos: new THREE.Vector3(5, 0, 5),
+  targetPos: new THREE.Vector3(),
+  idleTimer: 0, happyTimer: 0,
+  wingAngle: 0, bobOffset: 0,
+  curiosityTimer: 0, curiosityTarget: null,
+  playTimer: 0, sniffTimer: 0, napTimer: 0, isNapping: false,
+  autoHelpCooldown: 0, tailWag: 0,
+  helpTask: null,
+  breathTimer: 0,
+};
+
+let armorLevel = 0;
+const interactables = [];
+const farmPlots = [];
+const clouds = [];
+let currentPrompt = null;
+
+// ===================== PARTICLE SYSTEM =====================
+const particles = [];
+
+function spawnParticles(pos, color, count, spread, speed, life, size) {
+  for (let i = 0; i < count; i++) {
+    const geo = new THREE.SphereGeometry(size || 0.1, 4, 4);
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(pos);
+    mesh.position.x += (Math.random() - 0.5) * (spread || 1);
+    mesh.position.y += Math.random() * (spread || 1) * 0.5;
+    mesh.position.z += (Math.random() - 0.5) * (spread || 1);
+    scene.add(mesh);
+    particles.push({
+      mesh,
+      vel: new THREE.Vector3(
+        (Math.random() - 0.5) * (speed || 2),
+        1 + Math.random() * (speed || 2),
+        (Math.random() - 0.5) * (speed || 2)
+      ),
+      life: life || 1.5,
+      maxLife: life || 1.5,
+    });
+  }
+}
+
+function spawnDirectedParticles(from, to, color, count, size) {
+  for (let i = 0; i < count; i++) {
+    const geo = new THREE.SphereGeometry(size || 0.12, 4, 4);
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(from);
+    mesh.position.x += (Math.random() - 0.5) * 0.5;
+    mesh.position.y += Math.random() * 0.5;
+    mesh.position.z += (Math.random() - 0.5) * 0.5;
+    scene.add(mesh);
+    const dir = new THREE.Vector3().subVectors(to, from).normalize();
+    const speed = 4 + Math.random() * 3;
+    particles.push({
+      mesh,
+      vel: new THREE.Vector3(
+        dir.x * speed + (Math.random() - 0.5) * 2,
+        dir.y * speed + 1 + Math.random() * 2,
+        dir.z * speed + (Math.random() - 0.5) * 2
+      ),
+      life: 0.8 + Math.random() * 0.5,
+      maxLife: 1.3,
+    });
+  }
+}
+
+function spawnFireBreath(from, dir, color1, color2, count) {
+  for (let i = 0; i < count; i++) {
+    const t = Math.random();
+    const color = t < 0.5 ? color1 : color2;
+    const sz = 0.08 + Math.random() * 0.15;
+    const geo = new THREE.SphereGeometry(sz, 4, 4);
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(from);
+    scene.add(mesh);
+    const spread = 1.5;
+    const speed = 6 + Math.random() * 4;
+    particles.push({
+      mesh,
+      vel: new THREE.Vector3(
+        dir.x * speed + (Math.random() - 0.5) * spread,
+        dir.y * speed + (Math.random() - 0.5) * spread + 1,
+        dir.z * speed + (Math.random() - 0.5) * spread
+      ),
+      life: 0.4 + Math.random() * 0.4,
+      maxLife: 0.8,
+      grow: true,
+    });
+  }
+}
+
+function spawnEvolutionBurst(pos) {
+  const colors = [0xffd700, 0xffaa00, 0xffffff, 0x88ff88, 0xff88ff];
+  for (let i = 0; i < 60; i++) {
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    const geo = new THREE.SphereGeometry(0.15 + Math.random() * 0.2, 4, 4);
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(pos);
+    scene.add(mesh);
+    const angle = Math.random() * Math.PI * 2;
+    const pitch = (Math.random() - 0.3) * Math.PI;
+    const speed = 5 + Math.random() * 8;
+    particles.push({
+      mesh,
+      vel: new THREE.Vector3(
+        Math.cos(angle) * Math.cos(pitch) * speed,
+        Math.sin(pitch) * speed + 3,
+        Math.sin(angle) * Math.cos(pitch) * speed
+      ),
+      life: 1.5 + Math.random() * 1.0,
+      maxLife: 2.5,
+    });
+  }
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= dt;
+    if (p.life <= 0) {
+      scene.remove(p.mesh);
+      p.mesh.geometry.dispose();
+      p.mesh.material.dispose();
+      particles.splice(i, 1);
+      continue;
+    }
+    p.vel.y -= 2 * dt;
+    p.mesh.position.add(p.vel.clone().multiplyScalar(dt));
+    const t = p.life / p.maxLife;
+    p.mesh.material.opacity = t;
+    if (p.grow) {
+      p.mesh.scale.setScalar(1 + (1 - t) * 2);
+    } else {
+      p.mesh.scale.setScalar(0.5 + t * 0.5);
+    }
+  }
+}
+
+// ===================== TERRAIN HEIGHT =====================
+function noise2D(x, z) {
+  return Math.sin(x * 0.15) * Math.cos(z * 0.13) * 2.5
+    + Math.sin(x * 0.07 + 1.3) * Math.cos(z * 0.09 + 0.7) * 5
+    + Math.sin(x * 0.03 + 2.1) * Math.cos(z * 0.04 + 1.5) * 3
+    + Math.cos(x * 0.11 + z * 0.08) * 2;
+}
+
+function getTerrainHeight(x, z) {
+  const dist = Math.sqrt(x * x + z * z);
+  const r = CFG.ISLAND_RADIUS;
+  const falloff = Math.max(0, 1 - Math.pow(dist / (r * 0.85), 2.5));
+  let h = falloff * 18;
+  h += noise2D(x, z) * falloff;
+  const centerFlatten = Math.max(0, 1 - dist / 25);
+  h = h * (1 - centerFlatten * 0.4) + 3 * centerFlatten;
+  if (dist > r * 0.7) {
+    h = Math.max(h, -2) * Math.max(0, 1 - (dist - r * 0.7) / (r * 0.3));
+    h = Math.max(h, -3);
+  }
+  return h;
+}
+
+// ===================== SCENE SETUP =====================
+function setupScene() {
+  scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x88ccee, 0.003);
+
+  camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.5, 600);
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.2;
+  document.body.appendChild(renderer.domElement);
+
+  // Sky dome
+  const skyGeo = new THREE.SphereGeometry(450, 32, 20);
+  const skyColors = new Float32Array(skyGeo.attributes.position.count * 3);
+  for (let i = 0; i < skyGeo.attributes.position.count; i++) {
+    const y = skyGeo.attributes.position.getY(i);
+    const t = Math.max(0, y / 450);
+    const c = new THREE.Color();
+    if (t < 0.15) {
+      c.lerpColors(new THREE.Color(0xffe0b0), new THREE.Color(0x99ccee), t / 0.15);
+    } else if (t < 0.5) {
+      c.lerpColors(new THREE.Color(0x99ccee), new THREE.Color(0x5588cc), (t - 0.15) / 0.35);
+    } else {
+      c.lerpColors(new THREE.Color(0x5588cc), new THREE.Color(0x2244aa), (t - 0.5) / 0.5);
+    }
+    skyColors[i * 3] = c.r;
+    skyColors[i * 3 + 1] = c.g;
+    skyColors[i * 3 + 2] = c.b;
+  }
+  skyGeo.setAttribute('color', new THREE.BufferAttribute(skyColors, 3));
+  const skyMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide });
+  skyDome = new THREE.Mesh(skyGeo, skyMat);
+  scene.add(skyDome);
+
+  // Sun sphere (visible)
+  const sunVis = new THREE.Mesh(
+    new THREE.SphereGeometry(8, 16, 16),
+    new THREE.MeshBasicMaterial({ color: 0xffffdd })
+  );
+  sunVis.position.set(120, 100, 80);
+  scene.add(sunVis);
+
+  // Sun glow
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0xffeeaa, transparent: true, opacity: 0.15 });
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(20, 16, 16), glowMat);
+  glow.position.copy(sunVis.position);
+  scene.add(glow);
+
+  const ambient = new THREE.HemisphereLight(0x99ccff, 0x557744, 0.7);
+  scene.add(ambient);
+
+  sun = new THREE.DirectionalLight(0xfff5e0, 1.2);
+  sun.position.set(60, 80, 40);
+  sun.castShadow = true;
+  sun.shadow.mapSize.width = 2048;
+  sun.shadow.mapSize.height = 2048;
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 250;
+  sun.shadow.camera.left = -100;
+  sun.shadow.camera.right = 100;
+  sun.shadow.camera.top = 100;
+  sun.shadow.camera.bottom = -100;
+  sun.shadow.bias = -0.001;
+  scene.add(sun);
+  scene.add(sun.target);
+
+  // Rim light from opposite side
+  const rimLight = new THREE.DirectionalLight(0xaaddff, 0.3);
+  rimLight.position.set(-40, 30, -40);
+  scene.add(rimLight);
+
+  clock = new THREE.Clock();
+}
+
+// ===================== CREATE TERRAIN =====================
+function createTerrain() {
+  const size = CFG.ISLAND_RADIUS * 2.5;
+  const seg = CFG.TERRAIN_SEGMENTS;
+  const geo = new THREE.PlaneGeometry(size, size, seg, seg);
+  geo.rotateX(-Math.PI / 2);
+
+  const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const z = pos.getZ(i);
+    const h = getTerrainHeight(x, z);
+    pos.setY(i, h);
+
+    const c = new THREE.Color();
+    if (h < 0.2) {
+      c.lerpColors(new THREE.Color(0xe8d5a8), new THREE.Color(0xd4b896), 0.5 + Math.sin(x * 0.5 + z * 0.3) * 0.5);
+    } else if (h < 1.5) {
+      c.lerpColors(new THREE.Color(0xd4b896), new THREE.Color(0x6dbf5c), (h - 0.2) / 1.3);
+    } else if (h < 4) {
+      c.lerpColors(new THREE.Color(0x6dbf5c), new THREE.Color(0x3a9a3a), (h - 1.5) / 2.5);
+      const n = Math.sin(x * 0.8) * Math.cos(z * 0.7) * 0.06;
+      c.r += n; c.g += n; c.b += n;
+    } else if (h < 8) {
+      c.lerpColors(new THREE.Color(0x3a9a3a), new THREE.Color(0x4a7a35), (h - 4) / 4);
+    } else if (h < 13) {
+      c.lerpColors(new THREE.Color(0x7a6b50), new THREE.Color(0x8B7355), (h - 8) / 5);
+    } else {
+      c.lerpColors(new THREE.Color(0x8B7355), new THREE.Color(0xaaa89a), Math.min(1, (h - 13) / 5));
+    }
+    colors[i * 3] = c.r;
+    colors[i * 3 + 1] = c.g;
+    colors[i * 3 + 2] = c.b;
+  }
+
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.computeVertexNormals();
+
+  const mat = new THREE.MeshPhongMaterial({ vertexColors: true, flatShading: false, shininess: 5 });
+  terrain = new THREE.Mesh(geo, mat);
+  terrain.receiveShadow = true;
+  scene.add(terrain);
+
+  // Water with wave mesh
+  waterGeo = new THREE.PlaneGeometry(600, 600, 60, 60);
+  waterGeo.rotateX(-Math.PI / 2);
+  const waterMat = new THREE.MeshPhongMaterial({
+    color: 0x1a8fcc, transparent: true, opacity: 0.72,
+    shininess: 120, specular: 0x99ddff,
+  });
+  water = new THREE.Mesh(waterGeo, waterMat);
+  water.position.y = CFG.WATER_LEVEL;
+  water.receiveShadow = true;
+  scene.add(water);
+
+  // Underwater caustic plane (subtle light pattern)
+  const causticGeo = new THREE.PlaneGeometry(600, 600);
+  causticGeo.rotateX(-Math.PI / 2);
+  const causticMat = new THREE.MeshBasicMaterial({ color: 0x115588, transparent: true, opacity: 0.15 });
+  const caustic = new THREE.Mesh(causticGeo, causticMat);
+  caustic.position.y = CFG.WATER_LEVEL - 0.5;
+  scene.add(caustic);
+}
+
+// ===================== MODEL HELPERS =====================
+function makeMat(color, emissive) {
+  return new THREE.MeshLambertMaterial({
+    color, emissive: emissive || 0x000000, emissiveIntensity: emissive ? 0.3 : 0
+  });
+}
+
+function makePhong(color, opts) {
+  return new THREE.MeshPhongMaterial({ color, flatShading: true, ...(opts || {}) });
+}
+
+// ===================== PLAYER MODEL =====================
+function createPlayer() {
+  playerGroup = new THREE.Group();
+
+  const bodyMat = makeMat(0x3b82f6);
+  const skinMat = makeMat(0xf5c6a0);
+  const pantsMat = makeMat(0x4a5568);
+  const bootMat = makeMat(0x6b4423);
+
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(1, 1.2, 0.6), bodyMat);
+  torso.position.y = 1.6; torso.castShadow = true;
+  playerGroup.add(torso); playerGroup.userData.torso = torso;
+
+  // Belt
+  const belt = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.15, 0.65), makePhong(0x5c3317));
+  belt.position.y = 1.05; playerGroup.add(belt);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 8), skinMat);
+  head.position.y = 2.55; head.castShadow = true;
+  playerGroup.add(head); playerGroup.userData.head = head;
+
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.37, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), makeMat(0x5c3317));
+  hair.position.y = 2.6; playerGroup.add(hair);
+
+  const eyeGeo = new THREE.SphereGeometry(0.06, 6, 6);
+  const eyeMat = makeMat(0x222222);
+  const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+  eyeL.position.set(-0.12, 2.58, 0.3); playerGroup.add(eyeL);
+  const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+  eyeR.position.set(0.12, 2.58, 0.3); playerGroup.add(eyeR);
+
+  const armGeo = new THREE.BoxGeometry(0.3, 0.9, 0.3);
+  const armL = new THREE.Mesh(armGeo, bodyMat);
+  armL.position.set(-0.65, 1.5, 0); armL.geometry.translate(0, -0.45, 0);
+  armL.castShadow = true; playerGroup.add(armL); playerGroup.userData.armL = armL;
+
+  const armR = new THREE.Mesh(armGeo.clone(), bodyMat);
+  armR.position.set(0.65, 1.5, 0); armR.geometry.translate(0, -0.45, 0);
+  armR.castShadow = true; playerGroup.add(armR); playerGroup.userData.armR = armR;
+
+  const handGeo = new THREE.SphereGeometry(0.14, 6, 6);
+  const handL = new THREE.Mesh(handGeo, skinMat);
+  handL.position.set(-0.65, 0.95, 0); playerGroup.add(handL); playerGroup.userData.handL = handL;
+  const handR = new THREE.Mesh(handGeo, skinMat);
+  handR.position.set(0.65, 0.95, 0); playerGroup.add(handR); playerGroup.userData.handR = handR;
+
+  const legGeo = new THREE.BoxGeometry(0.35, 0.8, 0.35);
+  const legL = new THREE.Mesh(legGeo, pantsMat);
+  legL.position.set(-0.22, 0.7, 0); legL.geometry.translate(0, -0.4, 0);
+  legL.castShadow = true; playerGroup.add(legL); playerGroup.userData.legL = legL;
+
+  const legR = new THREE.Mesh(legGeo.clone(), pantsMat);
+  legR.position.set(0.22, 0.7, 0); legR.geometry.translate(0, -0.4, 0);
+  legR.castShadow = true; playerGroup.add(legR); playerGroup.userData.legR = legR;
+
+  const bootGeo = new THREE.BoxGeometry(0.38, 0.25, 0.45);
+  const bootL = new THREE.Mesh(bootGeo, bootMat);
+  bootL.position.set(-0.22, 0.12, 0.05); playerGroup.add(bootL);
+  const bootR = new THREE.Mesh(bootGeo, bootMat);
+  bootR.position.set(0.22, 0.12, 0.05); playerGroup.add(bootR);
+
+  playerGroup.position.set(0, getTerrainHeight(0, 0), 0);
+  playerPos.copy(playerGroup.position);
+  scene.add(playerGroup);
+}
+
+// ===================== DRAGON MODEL =====================
+function createDragonModel(stage) {
+  const g = new THREE.Group();
+  const scales = { kid: 0.5, teen: 1.0, adult: 1.8 };
+  const s = scales[stage];
+
+  // Stage-specific palettes
+  const palette = {
+    kid:   { main: 0x77ee77, dark: 0x44bb44, belly: 0xccffcc, accent: 0x88ff88, horn: 0xbbdd77, eye: 0x44ddff, spike: 0xaaeeaa, wing: 0x66dd66 },
+    teen:  { main: 0x339955, dark: 0x227744, belly: 0x88ddaa, accent: 0x44cc77, horn: 0xccaa44, eye: 0xffcc00, spike: 0x44bb66, wing: 0x2a9950 },
+    adult: { main: 0x115533, dark: 0x0a3322, belly: 0x55aa66, accent: 0x228844, horn: 0xddbb44, eye: 0xff8800, spike: 0xffaa00, wing: 0x0e4428 },
+  }[stage];
+
+  const bodyMat = makePhong(palette.main);
+  const darkMat = makePhong(palette.dark);
+  const bellyMat = makePhong(palette.belly, { shininess: 15 });
+  const accentMat = makePhong(palette.accent);
+  const eyeMat = new THREE.MeshPhongMaterial({ color: palette.eye, emissive: palette.eye, emissiveIntensity: 0.6, shininess: 120 });
+  const pupilMat = new THREE.MeshPhongMaterial({ color: 0x111111, shininess: 80 });
+  const hornMat = makePhong(palette.horn, { shininess: 60 });
+  const clawMat = makePhong(0xeeeedd, { shininess: 40 });
+  const wingMat = new THREE.MeshPhongMaterial({
+    color: palette.wing, flatShading: true, side: THREE.DoubleSide,
+    transparent: true, opacity: 0.7, shininess: 20,
+  });
+  const wingBoneMat = makePhong(palette.dark, { shininess: 30 });
+  const toothMat = makePhong(0xffffee, { shininess: 60 });
+
+  // === NECK (connects body to head smoothly) ===
+  const neckSegs = 3;
+  for (let i = 0; i < neckSegs; i++) {
+    const t = (i + 1) / (neckSegs + 1);
+    const neckR = (0.5 - t * 0.15) * s;
+    const neck = new THREE.Mesh(new THREE.SphereGeometry(neckR, 8, 6), bodyMat);
+    neck.scale.set(0.7, 0.7, 0.8);
+    neck.position.set(0, (0.1 + t * 0.25) * s, (1.0 + t * 0.7) * s);
+    neck.castShadow = true;
+    g.add(neck);
+  }
+
+  // === BODY (main torso + chest) ===
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1.2 * s, 14, 12), bodyMat);
+  body.scale.set(1, 0.85, 1.5);
+  body.castShadow = true;
+  g.add(body);
+
+  // Chest/shoulder bulk
+  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.8 * s, 10, 8), bodyMat);
+  chest.scale.set(1.1, 0.9, 1.0);
+  chest.position.set(0, 0.15 * s, 0.6 * s);
+  chest.castShadow = true;
+  g.add(chest);
+
+  // Belly with scale-like ridges
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(1.0 * s, 10, 8), bellyMat);
+  belly.scale.set(0.75, 0.55, 1.35);
+  belly.position.y = -0.35 * s;
+  g.add(belly);
+
+  // Belly scale lines
+  for (let i = 0; i < 4; i++) {
+    const ridge = new THREE.Mesh(
+      new THREE.BoxGeometry(0.6 * s, 0.02 * s, 0.06 * s),
+      accentMat
+    );
+    ridge.position.set(0, -0.5 * s, (-0.4 + i * 0.35) * s);
+    g.add(ridge);
+  }
+
+  // === HEAD ===
+  const headGroup = new THREE.Group();
+  headGroup.position.set(0, 0.4 * s, 1.8 * s);
+
+  // Skull - slightly elongated
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.55 * s, 12, 10), bodyMat);
+  skull.scale.set(1, 0.9, 1.1);
+  skull.castShadow = true;
+  headGroup.add(skull);
+
+  // Top of head (brow ridge)
+  const brow = new THREE.Mesh(new THREE.SphereGeometry(0.35 * s, 8, 6), darkMat);
+  brow.scale.set(1.4, 0.5, 1.0);
+  brow.position.set(0, 0.25 * s, 0.15 * s);
+  headGroup.add(brow);
+
+  // Snout - tapered box
+  const snout = new THREE.Mesh(new THREE.BoxGeometry(0.38 * s, 0.28 * s, 0.65 * s), bodyMat);
+  snout.position.set(0, -0.08 * s, 0.5 * s);
+  snout.castShadow = true;
+  headGroup.add(snout);
+
+  // Snout top ridge
+  const snoutRidge = new THREE.Mesh(new THREE.BoxGeometry(0.12 * s, 0.06 * s, 0.5 * s), darkMat);
+  snoutRidge.position.set(0, 0.08 * s, 0.5 * s);
+  headGroup.add(snoutRidge);
+
+  // Nostrils
+  const nostrilMat = makeMat(0x222222);
+  [-1, 1].forEach(side => {
+    const nostril = new THREE.Mesh(new THREE.SphereGeometry(0.06 * s, 6, 6), nostrilMat);
+    nostril.position.set(side * 0.1 * s, -0.02 * s, 0.82 * s);
+    headGroup.add(nostril);
+  });
+
+  // Jaw (lower)
+  const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.32 * s, 0.12 * s, 0.55 * s), darkMat);
+  jaw.position.set(0, -0.24 * s, 0.42 * s);
+  headGroup.add(jaw);
+  g.userData.jaw = jaw;
+
+  // Teeth
+  const teethCount = stage === 'kid' ? 3 : stage === 'teen' ? 5 : 7;
+  for (let i = 0; i < teethCount; i++) {
+    const t = (i / (teethCount - 1)) - 0.5;
+    const toothSize = (stage === 'kid' ? 0.03 : stage === 'teen' ? 0.04 : 0.05) * s;
+    // Upper teeth
+    const toothU = new THREE.Mesh(new THREE.ConeGeometry(toothSize, toothSize * 3, 4), toothMat);
+    toothU.position.set(t * 0.28 * s, -0.2 * s, 0.7 * s);
+    toothU.rotation.x = Math.PI;
+    headGroup.add(toothU);
+    // Lower teeth (smaller, offset)
+    if (i % 2 === 0) {
+      const toothL = new THREE.Mesh(new THREE.ConeGeometry(toothSize * 0.7, toothSize * 2, 4), toothMat);
+      toothL.position.set(t * 0.25 * s, -0.26 * s, 0.65 * s);
+      headGroup.add(toothL);
+    }
+  }
+
+  // Eyes
+  [-1, 1].forEach(side => {
+    // Eye socket (darker indent)
+    const socket = new THREE.Mesh(new THREE.SphereGeometry(0.18 * s, 8, 8), darkMat);
+    socket.position.set(side * 0.32 * s, 0.12 * s, 0.32 * s);
+    socket.scale.set(1, 0.9, 0.7);
+    headGroup.add(socket);
+
+    // Eyeball
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.14 * s, 10, 10), eyeMat);
+    eye.position.set(side * 0.34 * s, 0.14 * s, 0.36 * s);
+    headGroup.add(eye);
+
+    // Pupil (slit for teen/adult, round for kid)
+    const pupilH = stage === 'kid' ? 0.07 * s : 0.1 * s;
+    const pupilW = stage === 'kid' ? 0.07 * s : 0.04 * s;
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.065 * s, 6, 6), pupilMat);
+    pupil.position.set(side * 0.35 * s, 0.14 * s, 0.48 * s);
+    pupil.scale.set(pupilW / (0.065 * s), pupilH / (0.065 * s), 0.5);
+    headGroup.add(pupil);
+
+    // Eye glow highlight
+    const highlight = new THREE.Mesh(
+      new THREE.SphereGeometry(0.03 * s, 4, 4),
+      new THREE.MeshBasicMaterial({ color: 0xffffff })
+    );
+    highlight.position.set(side * 0.33 * s, 0.18 * s, 0.47 * s);
+    headGroup.add(highlight);
+  });
+
+  // Horns
+  if (stage === 'kid') {
+    // Tiny bumps
+    [-1, 1].forEach(side => {
+      const bump = new THREE.Mesh(new THREE.SphereGeometry(0.06 * s, 6, 6), hornMat);
+      bump.position.set(side * 0.2 * s, 0.4 * s, -0.05 * s);
+      headGroup.add(bump);
+    });
+  } else {
+    const hornLen = stage === 'teen' ? 0.5 : 0.8;
+    const hornRad = stage === 'teen' ? 0.07 : 0.09;
+    [-1, 1].forEach(side => {
+      // Multi-segment curved horn
+      const hornGroup = new THREE.Group();
+      for (let i = 0; i < 3; i++) {
+        const t = i / 2;
+        const segLen = hornLen * s * (1 - t * 0.3) / 3;
+        const segRad = hornRad * s * (1 - t * 0.4);
+        const seg = new THREE.Mesh(new THREE.ConeGeometry(segRad, segLen, 6), hornMat);
+        seg.position.y = i * hornLen * s / 3;
+        seg.rotation.z = side * (0.2 + i * 0.15);
+        seg.rotation.x = -0.1 * i;
+        hornGroup.add(seg);
+      }
+      hornGroup.position.set(side * 0.22 * s, 0.38 * s, -0.1 * s);
+      headGroup.add(hornGroup);
+    });
+  }
+
+  // Ear frills / cheek fins
+  [-1, 1].forEach(side => {
+    const frill = new THREE.Group();
+    const frillCount = stage === 'kid' ? 2 : stage === 'teen' ? 3 : 4;
+    for (let i = 0; i < frillCount; i++) {
+      const frillSize = (0.12 + i * 0.04) * s;
+      const fin = new THREE.Mesh(
+        new THREE.ConeGeometry(frillSize, frillSize * 2, 4),
+        accentMat
+      );
+      fin.position.set(0, -i * 0.08 * s, -i * 0.06 * s);
+      fin.rotation.z = side * (Math.PI / 2 + 0.3);
+      fin.rotation.y = side * 0.3;
+      frill.add(fin);
+    }
+    frill.position.set(side * 0.45 * s, 0.05 * s, 0);
+    headGroup.add(frill);
+  });
+
+  headGroup.add(new THREE.Object3D()); // ensure group is valid
+  g.add(headGroup);
+  g.userData.head = headGroup;
+  g.userData.snoutTip = new THREE.Vector3(0, 0.3 * s, 2.6 * s);
+
+  // === WINGS with bone structure ===
+  const ws = s * (stage === 'kid' ? 1.0 : stage === 'teen' ? 1.6 : 2.0);
+
+  // Wing membrane shape (defined in flat XY, extends in +X, +Y)
+  const wingShape = new THREE.Shape();
+  wingShape.moveTo(0, 0);
+  wingShape.quadraticCurveTo(ws * 0.3, ws * 0.15, ws * 0.7, ws * 0.6);
+  wingShape.quadraticCurveTo(ws * 1.0, ws * 0.85, ws * 1.5, ws * 0.9);
+  wingShape.lineTo(ws * 1.6, ws * 0.7);
+  wingShape.lineTo(ws * 1.3, ws * 0.4);
+  wingShape.quadraticCurveTo(ws * 1.0, ws * 0.3, ws * 0.8, ws * 0.25);
+  wingShape.lineTo(ws * 0.5, ws * 0.15);
+  wingShape.lineTo(ws * 0.25, 0);
+  wingShape.lineTo(0, 0);
+
+  [-1, 1].forEach(side => {
+    // Outer group: positioned on body, used for flap animation (rotation.z)
+    const wingGroup = new THREE.Group();
+    wingGroup.position.set(side * 0.6 * s, 0.5 * s, -0.1 * s);
+
+    // Inner orient group: rotates everything together so membrane + bones share the same space
+    const orient = new THREE.Group();
+    orient.rotation.y = side * Math.PI / 2;
+    orient.rotation.x = -0.2;
+    wingGroup.add(orient);
+
+    // Membrane (no individual rotation — orient group handles it)
+    const membrane = new THREE.Mesh(new THREE.ShapeGeometry(wingShape), wingMat);
+    orient.add(membrane);
+
+    // Wing bones (positions match the membrane's XY shape coordinates)
+    const bonePositions = [
+      [[0, 0, 0], [ws*0.7, ws*0.6, 0]],
+      [[0, 0, 0], [ws*1.2, ws*0.55, 0]],
+      [[0, 0, 0], [ws*1.5, ws*0.9, 0]],
+    ];
+    bonePositions.forEach(([start, end]) => {
+      const len = Math.sqrt((end[0]-start[0])**2 + (end[1]-start[1])**2);
+      const bone = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.03 * s, 0.02 * s, len, 4),
+        wingBoneMat
+      );
+      bone.position.set(
+        (start[0]+end[0])/2, (start[1]+end[1])/2, 0
+      );
+      bone.rotation.z = Math.atan2(end[0]-start[0], end[1]-start[1]);
+      orient.add(bone);
+    });
+
+    // Wing claw at tip
+    const wingClaw = new THREE.Mesh(
+      new THREE.ConeGeometry(0.04 * s, 0.2 * s, 4),
+      clawMat
+    );
+    wingClaw.position.set(ws * 1.55, ws * 0.9, 0);
+    wingClaw.rotation.z = 0.3;
+    orient.add(wingClaw);
+
+    g.add(wingGroup);
+    if (side === -1) g.userData.wingL = wingGroup;
+    else g.userData.wingR = wingGroup;
+  });
+
+  // === TAIL (smooth curve with ridge) ===
+  const tailGroup = new THREE.Group();
+  const tailSegs = stage === 'kid' ? 5 : stage === 'teen' ? 7 : 9;
+  for (let i = 0; i < tailSegs; i++) {
+    const t = i / tailSegs;
+    const tailR = (1 - t * 0.8) * 0.3 * s;
+    const seg = new THREE.Mesh(new THREE.SphereGeometry(tailR, 7, 5), bodyMat);
+    const curve = Math.sin(t * 1.5) * 0.4 * s;
+    seg.position.set(curve, -0.15 * s * t, -1.5 * s - i * 0.4 * s);
+    seg.castShadow = true;
+    tailGroup.add(seg);
+
+    // Dorsal ridge on tail
+    if (i < tailSegs - 1 && stage !== 'kid') {
+      const ridgeH = (1 - t) * 0.15 * s;
+      const ridge = new THREE.Mesh(
+        new THREE.ConeGeometry(0.03 * s, ridgeH, 4),
+        accentMat
+      );
+      ridge.position.set(curve, -0.15 * s * t + tailR, -1.5 * s - i * 0.4 * s);
+      tailGroup.add(ridge);
+    }
+  }
+
+  // Tail tip
+  if (stage === 'adult') {
+    const tipShape = new THREE.Shape();
+    tipShape.moveTo(0, 0.35*s); tipShape.lineTo(-0.3*s, 0);
+    tipShape.lineTo(-0.1*s, -0.15*s); tipShape.lineTo(0.1*s, -0.15*s);
+    tipShape.lineTo(0.3*s, 0); tipShape.lineTo(0, 0.35*s);
+    const tip = new THREE.Mesh(new THREE.ShapeGeometry(tipShape), accentMat);
+    tip.position.set(
+      Math.sin((tailSegs/tailSegs)*1.5)*0.4*s,
+      -0.15*s - 0.1*s,
+      -1.5*s - tailSegs*0.4*s
+    );
+    tip.rotation.x = Math.PI / 2;
+    tailGroup.add(tip);
+  } else if (stage === 'teen') {
+    const tipBall = new THREE.Mesh(new THREE.SphereGeometry(0.08*s, 6, 6), accentMat);
+    tipBall.position.set(0, -0.15*s*0.9, -1.5*s - tailSegs*0.4*s);
+    tailGroup.add(tipBall);
+  }
+  g.add(tailGroup);
+  g.userData.tail = tailGroup;
+
+  // === LEGS (muscular with joints) ===
+  const legPositions = [
+    { x: -0.55, z: 0.55, front: true },
+    { x:  0.55, z: 0.55, front: true },
+    { x: -0.6,  z: -0.55, front: false },
+    { x:  0.6,  z: -0.55, front: false },
+  ];
+  const legs = [];
+  legPositions.forEach(lp => {
+    const legGroup = new THREE.Group();
+    legGroup.position.set(lp.x * s, -0.55 * s, lp.z * s);
+
+    // Upper leg
+    const upper = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.18*s, 0.14*s, 0.5*s, 8),
+      bodyMat
+    );
+    upper.position.y = -0.05 * s;
+    upper.castShadow = true;
+    legGroup.add(upper);
+
+    // Knee joint
+    const knee = new THREE.Mesh(new THREE.SphereGeometry(0.14*s, 6, 6), darkMat);
+    knee.position.y = -0.3 * s;
+    legGroup.add(knee);
+
+    // Lower leg
+    const lower = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.13*s, 0.16*s, 0.4*s, 7),
+      bodyMat
+    );
+    lower.position.y = -0.5 * s;
+    lower.castShadow = true;
+    legGroup.add(lower);
+
+    // Foot (wider)
+    const foot = new THREE.Mesh(new THREE.SphereGeometry(0.2*s, 7, 5), bodyMat);
+    foot.scale.set(1, 0.5, 1.2);
+    foot.position.set(0, -0.7*s, 0.05*s);
+    legGroup.add(foot);
+
+    // Claws (3 per foot)
+    for (let c = -1; c <= 1; c++) {
+      const claw = new THREE.Mesh(
+        new THREE.ConeGeometry(0.04*s, 0.18*s, 4),
+        clawMat
+      );
+      claw.position.set(c * 0.08 * s, -0.75 * s, 0.18 * s);
+      claw.rotation.x = 0.6;
+      legGroup.add(claw);
+    }
+
+    g.add(legGroup);
+    legs.push(legGroup);
+  });
+  g.userData.legs = legs;
+
+  // === SPIKES along back ===
+  const spikeCount = stage === 'kid' ? 4 : stage === 'teen' ? 7 : 10;
+  const spikeMat = makePhong(palette.spike, { shininess: 40 });
+  for (let i = 0; i < spikeCount; i++) {
+    const t = i / (spikeCount - 1);
+    const spikeH = (1 - Math.abs(t - 0.35) * 1.5) * (stage === 'kid' ? 0.2 : stage === 'teen' ? 0.35 : 0.45) * s;
+    if (spikeH < 0.02 * s) continue;
+    const spike = new THREE.Mesh(
+      new THREE.ConeGeometry(0.06 * s, Math.max(0.05 * s, spikeH), 5),
+      spikeMat
+    );
+    const zPos = 1.2 * s - t * 3.0 * s;
+    const yPos = 0.85 * s + Math.sin(t * 2) * 0.1 * s;
+    spike.position.set(0, yPos, zPos);
+    g.add(spike);
+  }
+
+  // === GLOW (teen subtle, adult strong) ===
+  if (stage === 'teen') {
+    const dragonGlow = new THREE.PointLight(0x33cc55, 0.2, 10);
+    dragonGlow.position.set(0, 0.3*s, 0.5*s);
+    g.add(dragonGlow);
+    g.userData.glow = dragonGlow;
+  }
+  if (stage === 'adult') {
+    const dragonGlow = new THREE.PointLight(0x44ff44, 0.5, 18);
+    dragonGlow.position.set(0, 0, 0);
+    g.add(dragonGlow);
+    g.userData.glow = dragonGlow;
+    // Eye glow lights
+    [-1, 1].forEach(side => {
+      const eyeLight = new THREE.PointLight(palette.eye, 0.3, 5);
+      eyeLight.position.set(side * 0.35 * s, 0.5 * s, 2.1 * s);
+      g.add(eyeLight);
+    });
+  }
+
+  g.userData.scale = s;
+  return g;
+}
+
+function spawnDragon() {
+  dragonGroup = createDragonModel(dragon.stage);
+  dragonGroup.position.copy(dragon.pos);
+  dragonGroup.position.y = getTerrainHeight(dragon.pos.x, dragon.pos.z);
+  scene.add(dragonGroup);
+}
+
+function evolveDragon(newStage) {
+  const oldPos = dragonGroup.position.clone();
+  const oldRot = dragonGroup.rotation.y;
+  scene.remove(dragonGroup);
+  dragon.stage = newStage;
+  dragonGroup = createDragonModel(newStage);
+  dragonGroup.position.copy(oldPos);
+  dragonGroup.rotation.y = oldRot;
+  scene.add(dragonGroup);
+
+  spawnEvolutionBurst(oldPos);
+
+  if (newStage === 'teen') {
+    notify('Your dragon evolved to TEEN! It can now help gather resources.', 'epic');
+  } else if (newStage === 'adult') {
+    notify('Your dragon evolved to ADULT! Press E near it to RIDE and FLY!', 'epic');
+  }
+}
+
+// ===================== TREES =====================
+function createAppleTree(x, z) {
+  const g = new THREE.Group();
+  const h = getTerrainHeight(x, z);
+  if (h < 0.5) return null;
+
+  // Trunk with slight bend
+  const trunkMat = makePhong(0x8B5A2B);
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.35, 3, 8), trunkMat);
+  trunk.position.y = 1.5; trunk.castShadow = true; g.add(trunk);
+
+  // Branch stubs
+  const branchGeo = new THREE.CylinderGeometry(0.06, 0.1, 1, 6);
+  for (let i = 0; i < 3; i++) {
+    const branch = new THREE.Mesh(branchGeo, trunkMat);
+    const angle = (i / 3) * Math.PI * 2 + x * 0.1;
+    branch.position.set(Math.cos(angle) * 0.4, 2.5 + i * 0.3, Math.sin(angle) * 0.4);
+    branch.rotation.z = Math.cos(angle) * 0.5;
+    branch.rotation.x = Math.sin(angle) * 0.5;
+    g.add(branch);
+  }
+
+  // Multi-layer foliage
+  const foliageMat = makePhong(0x2d8a4e);
+  const foliageMat2 = makePhong(0x3a9a58);
+  const f1 = new THREE.Mesh(new THREE.SphereGeometry(2.0, 8, 8), foliageMat);
+  f1.position.y = 3.8; f1.scale.set(1, 0.75, 1); f1.castShadow = true; g.add(f1);
+  const f2 = new THREE.Mesh(new THREE.SphereGeometry(1.4, 7, 7), foliageMat2);
+  f2.position.set(0.6, 4.3, 0.3); f2.castShadow = true; g.add(f2);
+  const f3 = new THREE.Mesh(new THREE.SphereGeometry(1.2, 7, 7), foliageMat2);
+  f3.position.set(-0.5, 4.1, -0.4); f3.castShadow = true; g.add(f3);
+
+  // Apples with stems
+  const appleGroup = new THREE.Group();
+  const appleMat = makePhong(0xdd3333, { shininess: 60 });
+  for (let i = 0; i < 6; i++) {
+    const a = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 6), appleMat);
+    const angle = (i / 6) * Math.PI * 2;
+    const yOff = 3.0 + Math.sin(i * 1.7) * 0.6;
+    a.position.set(Math.cos(angle) * 1.3, yOff, Math.sin(angle) * 1.3);
+    appleGroup.add(a);
+    // Tiny stem
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.08, 4), trunkMat);
+    stem.position.set(a.position.x, a.position.y + 0.15, a.position.z);
+    appleGroup.add(stem);
+  }
+  g.add(appleGroup);
+
+  g.position.set(x, h, z);
+  scene.add(g);
+
+  const obj = {
+    type: 'apple_tree', group: g, apples: appleGroup,
+    x, z, hasItems: true, respawnTimer: 0,
+    interact: function() {
+      if (!this.hasItems) return;
+      this.hasItems = false;
+      this.apples.visible = false;
+      this.respawnTimer = CFG.APPLE_RESPAWN;
+      inventory.apples += 3;
+      spawnParticles(
+        new THREE.Vector3(x, h + 3, z), 0xff4444, 8, 2, 3, 1.2, 0.12
+      );
+      notify('+3 Apples gathered!');
+    },
+    getPrompt: function() { return this.hasItems ? 'Gather Apples' : null; }
+  };
+  interactables.push(obj);
+  return obj;
+}
+
+function createFruitTree(x, z) {
+  const g = new THREE.Group();
+  const h = getTerrainHeight(x, z);
+  if (h < 0.5) return null;
+
+  const trunkMat = makePhong(0x7a5230);
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.3, 2.5, 8), trunkMat);
+  trunk.position.y = 1.25; trunk.castShadow = true; g.add(trunk);
+
+  // Layered conical foliage
+  const fMat1 = makePhong(0x228844);
+  const fMat2 = makePhong(0x2a9950);
+  const c1 = new THREE.Mesh(new THREE.ConeGeometry(1.8, 2.5, 8), fMat1);
+  c1.position.y = 3.2; c1.castShadow = true; g.add(c1);
+  const c2 = new THREE.Mesh(new THREE.ConeGeometry(1.4, 2.0, 8), fMat2);
+  c2.position.y = 4.2; c2.castShadow = true; g.add(c2);
+  const c3 = new THREE.Mesh(new THREE.ConeGeometry(0.9, 1.2, 7), fMat1);
+  c3.position.y = 5.0; g.add(c3);
+
+  const fruitGroup = new THREE.Group();
+  const fruitMat = makePhong(0xff8c00, { shininess: 40 });
+  for (let i = 0; i < 5; i++) {
+    const f = new THREE.Mesh(new THREE.SphereGeometry(0.13, 6, 6), fruitMat);
+    const angle = (i / 5) * Math.PI * 2;
+    f.position.set(Math.cos(angle) * 1.0, 2.5 + Math.sin(i * 2) * 0.5, Math.sin(angle) * 1.0);
+    fruitGroup.add(f);
+  }
+  g.add(fruitGroup);
+
+  g.position.set(x, h, z);
+  scene.add(g);
+
+  const obj = {
+    type: 'fruit_tree', group: g, fruits: fruitGroup,
+    x, z, hasItems: true, respawnTimer: 0,
+    interact: function() {
+      if (!this.hasItems) return;
+      this.hasItems = false;
+      this.fruits.visible = false;
+      this.respawnTimer = CFG.FRUIT_RESPAWN;
+      inventory.fruits += 2;
+      spawnParticles(
+        new THREE.Vector3(x, h + 2.5, z), 0xff9900, 6, 1.5, 2.5, 1.0, 0.1
+      );
+      notify('+2 Fruits gathered!');
+    },
+    getPrompt: function() { return this.hasItems ? 'Gather Fruits' : null; }
+  };
+  interactables.push(obj);
+  return obj;
+}
+
+// ===================== ROCKS =====================
+function createRock(x, z) {
+  const g = new THREE.Group();
+  const h = getTerrainHeight(x, z);
+  if (h < 0.3) return null;
+
+  const rockMat = makePhong(0x777777, { shininess: 10 });
+  const rockMat2 = makePhong(0x666666, { shininess: 10 });
+  const crystalMat = new THREE.MeshPhongMaterial({
+    color: 0x6699ee, emissive: 0x3355aa, emissiveIntensity: 0.4,
+    flatShading: true, shininess: 100, specular: 0xaaccff,
+  });
+
+  // Main rock cluster
+  const base = new THREE.Mesh(new THREE.DodecahedronGeometry(1.2, 1), rockMat);
+  base.scale.set(1 + Math.random()*0.3, 0.6 + Math.random()*0.4, 1 + Math.random()*0.3);
+  base.rotation.set(Math.random(), Math.random(), Math.random());
+  base.castShadow = true; g.add(base);
+
+  const rock2 = new THREE.Mesh(new THREE.DodecahedronGeometry(0.7, 0), rockMat2);
+  rock2.position.set(0.8, 0, 0.5);
+  rock2.rotation.set(Math.random(), Math.random(), 0);
+  rock2.castShadow = true; g.add(rock2);
+
+  // Crystals with glow
+  const crystals = [];
+  const c1 = new THREE.Mesh(new THREE.OctahedronGeometry(0.3, 0), crystalMat);
+  c1.position.set(0.5, 0.7, 0.3); c1.scale.y = 2.0; c1.rotation.z = 0.3; g.add(c1); crystals.push(c1);
+  const c2 = new THREE.Mesh(new THREE.OctahedronGeometry(0.2, 0), crystalMat);
+  c2.position.set(-0.3, 0.6, -0.2); c2.scale.y = 2.2; c2.rotation.z = -0.4; g.add(c2); crystals.push(c2);
+  const c3 = new THREE.Mesh(new THREE.OctahedronGeometry(0.15, 0), crystalMat);
+  c3.position.set(0.1, 0.5, -0.5); c3.scale.y = 1.8; c3.rotation.z = 0.2; g.add(c3); crystals.push(c3);
+
+  // Crystal point light
+  const crystalLight = new THREE.PointLight(0x6699ff, 0.3, 8);
+  crystalLight.position.set(0.2, 1.0, 0);
+  g.add(crystalLight);
+
+  g.position.set(x, h, z);
+  scene.add(g);
+
+  const obj = {
+    type: 'rock', group: g, crystals, crystalLight,
+    x, z, hasItems: true, respawnTimer: 0,
+    interact: function() {
+      if (!this.hasItems) return;
+      this.hasItems = false;
+      this.crystals.forEach(c => c.visible = false);
+      this.crystalLight.intensity = 0;
+      this.respawnTimer = CFG.MINERAL_RESPAWN;
+      inventory.minerals += 3;
+      spawnParticles(
+        new THREE.Vector3(x, h + 1, z), 0x6699ff, 10, 1.5, 4, 1.0, 0.08
+      );
+      spawnParticles(
+        new THREE.Vector3(x, h + 0.5, z), 0xaaaaaa, 6, 1, 2, 0.8, 0.06
+      );
+      notify('+3 Minerals mined!');
+    },
+    getPrompt: function() { return this.hasItems ? 'Mine Minerals' : null; },
+    respawn: function() {
+      this.hasItems = true;
+      this.crystals.forEach(c => c.visible = true);
+      this.crystalLight.intensity = 0.3;
+    }
+  };
+  interactables.push(obj);
+  return obj;
+}
+
+// ===================== FARM PLOTS =====================
+function createFarmPlot(x, z) {
+  const g = new THREE.Group();
+  const h = getTerrainHeight(x, z);
+
+  const soil = new THREE.Mesh(new THREE.BoxGeometry(3, 0.15, 3), makePhong(0x6b4423));
+  soil.receiveShadow = true; g.add(soil);
+
+  for (let i = -1; i <= 1; i++) {
+    const row = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.1, 0.3), makePhong(0x5a3a1a));
+    row.position.set(0, 0.1, i * 0.8); g.add(row);
+  }
+
+  const postGeo = new THREE.CylinderGeometry(0.05, 0.05, 1, 6);
+  const postMat = makePhong(0x8B6914);
+  const railGeo = new THREE.CylinderGeometry(0.03, 0.03, 3.2, 4);
+  [[-1.6,0,-1.6],[1.6,0,-1.6],[-1.6,0,1.6],[1.6,0,1.6]].forEach(p => {
+    const post = new THREE.Mesh(postGeo, postMat);
+    post.position.set(p[0], 0.5, p[2]); g.add(post);
+  });
+  // Rails
+  [[-1.6,0.7,0],[1.6,0.7,0]].forEach(p => {
+    const rail = new THREE.Mesh(railGeo, postMat);
+    rail.position.set(p[0], p[1], 0);
+    rail.rotation.x = Math.PI/2; g.add(rail);
+  });
+
+  g.position.set(x, h + 0.08, z);
+  scene.add(g);
+
+  const cropGroup = new THREE.Group();
+  g.add(cropGroup);
+
+  const plot = {
+    type: 'farm_plot', group: g, cropGroup,
+    x, z, state: 'empty', growTimer: 0,
+    interact: function() {
+      if (this.state === 'empty' && inventory.apples >= 1) {
+        inventory.apples--;
+        this.state = 'growing';
+        this.growTimer = CFG.CROP_GROW_TIME;
+        this.updateVisual();
+        spawnParticles(new THREE.Vector3(x, h + 0.5, z), 0x88cc44, 5, 2, 1, 0.8, 0.08);
+        notify('Planted a crop! Wait for it to grow.');
+      } else if (this.state === 'mature') {
+        this.state = 'empty';
+        inventory.crops += 4;
+        this.updateVisual();
+        spawnParticles(new THREE.Vector3(x, h + 1, z), 0xffcc00, 10, 2, 3, 1.2, 0.12);
+        notify('+4 Crops harvested!');
+      } else if (this.state === 'empty' && inventory.apples < 1) {
+        notify('Need apples to plant!', 'warn');
+      }
+    },
+    getPrompt: function() {
+      if (this.state === 'empty') return inventory.apples >= 1 ? 'Plant Crop (1 apple)' : 'Need Apples to Plant';
+      if (this.state === 'growing') return 'Growing... ' + Math.ceil(this.growTimer) + 's';
+      if (this.state === 'mature') return 'Harvest Crops';
+      return null;
+    },
+    updateVisual: function() {
+      while (this.cropGroup.children.length) this.cropGroup.remove(this.cropGroup.children[0]);
+      if (this.state === 'growing') {
+        const pct = 1 - this.growTimer / CFG.CROP_GROW_TIME;
+        for (let i = -1; i <= 1; i++) {
+          for (let j = -1; j <= 1; j++) {
+            const sprout = new THREE.Mesh(
+              new THREE.CylinderGeometry(0.03, 0.05, 0.2+pct*0.8, 6),
+              makePhong(0x44aa33)
+            );
+            sprout.position.set(i*0.7, 0.2+pct*0.4, j*0.7);
+            this.cropGroup.add(sprout);
+            if (pct > 0.4) {
+              const leaf = new THREE.Mesh(
+                new THREE.SphereGeometry(0.1+pct*0.15, 6, 6),
+                makePhong(0x33aa22)
+              );
+              leaf.position.set(i*0.7, 0.4+pct*0.5, j*0.7);
+              this.cropGroup.add(leaf);
+            }
+          }
+        }
+      } else if (this.state === 'mature') {
+        for (let i = -1; i <= 1; i++) {
+          for (let j = -1; j <= 1; j++) {
+            const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.06,1.2,6), makePhong(0x44aa33));
+            stalk.position.set(i*0.7, 0.7, j*0.7); this.cropGroup.add(stalk);
+            const leaf1 = new THREE.Mesh(new THREE.PlaneGeometry(0.3,0.15), new THREE.MeshPhongMaterial({color:0x44bb33,side:THREE.DoubleSide}));
+            leaf1.position.set(i*0.7+0.15, 0.9, j*0.7); leaf1.rotation.y = i*0.5; this.cropGroup.add(leaf1);
+            const fruit = new THREE.Mesh(new THREE.SphereGeometry(0.18, 6, 6), makePhong(0xffcc00, { shininess: 40 }));
+            fruit.position.set(i*0.7, 1.3, j*0.7); this.cropGroup.add(fruit);
+          }
+        }
+      }
+    }
+  };
+  interactables.push(plot);
+  farmPlots.push(plot);
+  return plot;
+}
+
+// ===================== CRAFTING STATION =====================
+function createCraftStation(x, z) {
+  const g = new THREE.Group();
+  const h = getTerrainHeight(x, z);
+
+  const base = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.6, 0.8), makePhong(0x555555));
+  base.position.y = 0.3; base.castShadow = true; g.add(base);
+  const top = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.2, 1.0), makePhong(0x444444));
+  top.position.y = 0.7; top.castShadow = true; g.add(top);
+
+  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.8, 6), makePhong(0x8B6914));
+  handle.position.set(0.3, 1.1, 0); handle.rotation.z = 0.5; g.add(handle);
+  const hammerHead = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.3, 0.15), makePhong(0x666666));
+  hammerHead.position.set(0.6, 1.4, 0); g.add(hammerHead);
+
+  // Small forge fire
+  const fireLight = new THREE.PointLight(0xff6600, 0.5, 8);
+  fireLight.position.set(-0.5, 0.5, 0); g.add(fireLight);
+  g.userData.fireLight = fireLight;
+
+  g.position.set(x, h, z);
+  scene.add(g);
+
+  const obj = {
+    type: 'craft_station', group: g, x, z,
+    interact: function() { tryCraft(); },
+    getPrompt: function() {
+      const next = armorLevel < 3 ? CFG.ARMOR_COST[armorLevel] : null;
+      if (next === null) return 'Fully Armored!';
+      return 'Craft Armor (' + next + ' minerals, have ' + inventory.minerals + ')';
+    }
+  };
+  interactables.push(obj);
+}
+
+// ===================== DRAGON INTERACTABLE =====================
+const dragonInteract = {
+  type: 'dragon', group: null,
+  get x() { return dragon.pos.x; },
+  get z() { return dragon.pos.z; },
+  interact: function() {
+    if (isRiding) { dismountDragon(); return; }
+    if (dragon.stage === 'adult' && dragon.befriended) { mountDragon(); return; }
+    if (inventory.apples > 0) {
+      inventory.apples--;
+      dragon.fedApples++;
+      dragon.befriended = true;
+      dragon.happyTimer = 1.5;
+      // Spawn heart particles
+      const dp = dragonGroup.position.clone();
+      dp.y += 1.5;
+      spawnParticles(dp, 0xff6688, 8, 1, 3, 1.5, 0.15);
+      notify('Fed the dragon an apple! (' + dragon.fedApples + ' total)');
+
+      if (dragon.fedApples >= CFG.DRAGON_TEEN_TO_ADULT && dragon.stage === 'teen') {
+        evolveDragon('adult');
+      } else if (dragon.fedApples >= CFG.DRAGON_KID_TO_TEEN && dragon.stage === 'kid') {
+        evolveDragon('teen');
+      }
+    } else {
+      notify('You need apples to feed the dragon!', 'warn');
+    }
+  },
+  getPrompt: function() {
+    if (isRiding) return 'Dismount Dragon';
+    if (dragon.stage === 'adult' && dragon.befriended)
+      return inventory.apples > 0 ? 'Ride Dragon (or hold F to feed)' : 'Ride Dragon';
+    if (dragon.befriended)
+      return inventory.apples > 0 ? 'Feed Apple to Dragon' : 'Need Apples to Feed';
+    return inventory.apples > 0 ? 'Offer Apple to Baby Dragon' : 'A baby dragon! Find apples to befriend it';
+  }
+};
+interactables.push(dragonInteract);
+
+// ===================== CLOUDS =====================
+function createClouds() {
+  const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.75 });
+  for (let i = 0; i < 15; i++) {
+    const cg = new THREE.Group();
+    const count = 4 + Math.floor(Math.random() * 5);
+    for (let j = 0; j < count; j++) {
+      const puff = new THREE.Mesh(new THREE.SphereGeometry(3 + Math.random() * 5, 8, 6), cloudMat);
+      puff.position.set((Math.random()-0.5)*10, (Math.random()-0.5)*2, (Math.random()-0.5)*8);
+      puff.scale.y = 0.4 + Math.random() * 0.2;
+      cg.add(puff);
+    }
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 50 + Math.random() * 150;
+    cg.position.set(Math.cos(angle)*dist, 45 + Math.random()*35, Math.sin(angle)*dist);
+    cg.userData.speed = 0.2 + Math.random() * 0.4;
+    cg.userData.angle = angle;
+    cg.userData.dist = dist;
+    scene.add(cg);
+    clouds.push(cg);
+  }
+}
+
+// ===================== DECORATIONS =====================
+function addDecorations() {
+  const grassMats = [makePhong(0x44aa44), makePhong(0x55bb55), makePhong(0x3a9a3a)];
+  for (let i = 0; i < 300; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = Math.random() * CFG.ISLAND_RADIUS * 0.8;
+    const x = Math.cos(angle) * dist;
+    const z = Math.sin(angle) * dist;
+    const h = getTerrainHeight(x, z);
+    if (h < 0.5) continue;
+    const tuft = new THREE.Mesh(
+      new THREE.ConeGeometry(0.12 + Math.random()*0.1, 0.3 + Math.random()*0.4, 4),
+      grassMats[Math.floor(Math.random()*3)]
+    );
+    tuft.position.set(x, h + 0.12, z);
+    tuft.rotation.y = Math.random() * Math.PI;
+    scene.add(tuft);
+  }
+
+  const flowerColors = [0xff6699, 0xffcc33, 0xcc66ff, 0xff9944, 0x66ccff, 0xff88aa, 0xaaffaa];
+  for (let i = 0; i < 80; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = Math.random() * CFG.ISLAND_RADIUS * 0.7;
+    const x = Math.cos(angle) * dist;
+    const z = Math.sin(angle) * dist;
+    const h = getTerrainHeight(x, z);
+    if (h < 1 || h > 8) continue;
+
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.015,0.02,0.35,4), makePhong(0x338833));
+    stem.position.set(x, h+0.17, z); scene.add(stem);
+
+    const fc = flowerColors[Math.floor(Math.random()*flowerColors.length)];
+    const petals = new THREE.Group();
+    petals.position.set(x, h+0.38, z);
+    const center = new THREE.Mesh(new THREE.SphereGeometry(0.05,6,6), makePhong(0xffdd44));
+    petals.add(center);
+    for (let p = 0; p < 5; p++) {
+      const petal = new THREE.Mesh(new THREE.SphereGeometry(0.06,4,4), makePhong(fc));
+      const pa = (p/5)*Math.PI*2;
+      petal.position.set(Math.cos(pa)*0.08, 0, Math.sin(pa)*0.08);
+      petal.scale.set(1.2, 0.5, 1.2);
+      petals.add(petal);
+    }
+    scene.add(petals);
+  }
+
+  for (let i = 0; i < 50; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = Math.random() * CFG.ISLAND_RADIUS * 0.8;
+    const x = Math.cos(angle) * dist;
+    const z = Math.sin(angle) * dist;
+    const h = getTerrainHeight(x, z);
+    if (h < 0.3) continue;
+    const pebble = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(0.12 + Math.random()*0.18, 0),
+      makePhong(0x888888 + Math.floor(Math.random()*0x222222))
+    );
+    pebble.position.set(x, h+0.06, z);
+    pebble.rotation.set(Math.random(), Math.random(), Math.random());
+    scene.add(pebble);
+  }
+}
+
+// ===================== POPULATE WORLD =====================
+function populateIsland() {
+  const applePositions = [
+    [8,8],[-12,15],[20,-5],[-8,-18],[30,15],
+    [-25,8],[15,30],[-20,-25],[35,-20],[5,-30],
+  ];
+  applePositions.forEach(([x,z]) => createAppleTree(x,z));
+
+  const fruitPositions = [
+    [25,25],[-30,20],[40,5],[-15,35],[10,-40],
+    [-35,-15],[45,25],[-10,45],
+  ];
+  fruitPositions.forEach(([x,z]) => createFruitTree(x,z));
+
+  const rockPositions = [
+    [40,-10],[-40,-30],[50,30],[-45,15],[20,45],
+    [-30,-45],[55,-25],[-50,5],[10,55],[-20,50],
+  ];
+  rockPositions.forEach(([x,z]) => createRock(x,z));
+
+  const farmPositions = [[-6,-6],[0,-8],[6,-6]];
+  farmPositions.forEach(([x,z]) => createFarmPlot(x,z));
+
+  createCraftStation(8, -12);
+  spawnDragon();
+  createClouds();
+  addDecorations();
+}
+
+// ===================== ARMOR =====================
+function tryCraft() {
+  if (armorLevel >= 3) { notify('You already have full crystal armor!', 'warn'); return; }
+  const cost = CFG.ARMOR_COST[armorLevel];
+  if (inventory.minerals < cost) { notify('Need ' + cost + ' minerals! (have ' + inventory.minerals + ')', 'warn'); return; }
+  inventory.minerals -= cost;
+  armorLevel++;
+  updateArmorVisual();
+  spawnParticles(playerPos.clone().add(new THREE.Vector3(0,2,0)), 0xaa88ff, 15, 1.5, 4, 1.5, 0.12);
+  const names = ['Bronze Armor', 'Iron Armor', 'Crystal Armor'];
+  notify('Crafted ' + names[armorLevel-1] + '!', 'epic');
+}
+
+function updateArmorVisual() {
+  if (!playerGroup) return;
+  const colors = [0x3b82f6, 0xcd7f32, 0x888899, 0x6688ff];
+  const emissives = [0x000000, 0x331100, 0x222233, 0x334488];
+  const mat = new THREE.MeshPhongMaterial({
+    color: colors[armorLevel], emissive: emissives[armorLevel],
+    emissiveIntensity: armorLevel === 3 ? 0.5 : 0.2,
+    shininess: armorLevel === 3 ? 80 : 30,
+    flatShading: true,
+  });
+  playerGroup.userData.torso.material = mat;
+  if (armorLevel >= 2) {
+    playerGroup.userData.armL.material = mat;
+    playerGroup.userData.armR.material = mat;
+  }
+  if (armorLevel >= 3) {
+    playerGroup.userData.legL.material = mat;
+    playerGroup.userData.legR.material = mat;
+  }
+}
+
+// ===================== MOUNT/DISMOUNT =====================
+function mountDragon() {
+  if (dragon.stage !== 'adult') return;
+  isRiding = true;
+  playerGroup.visible = false;
+  notify('Mounted the dragon! SPACE to fly up, SHIFT to descend.');
+}
+
+function dismountDragon() {
+  isRiding = false; isFlying = false;
+  const offset = new THREE.Vector3(3,0,0).applyAxisAngle(new THREE.Vector3(0,1,0), dragonGroup.rotation.y);
+  playerPos.copy(dragonGroup.position).add(offset);
+  const th = getTerrainHeight(playerPos.x, playerPos.z);
+  playerPos.y = Math.max(th, playerPos.y);
+  playerGroup.position.copy(playerPos);
+  playerGroup.visible = true;
+  notify('Dismounted the dragon.');
+}
+
+// ===================== DRAGON HELP (VISUAL) =====================
+function dragonHelp() {
+  if (!dragon.befriended) { notify('Befriend the dragon first by feeding it apples!', 'warn'); return; }
+  if (dragon.helpTask) { notify('Dragon is already helping!', 'warn'); return; }
+
+  const bonus = dragon.stage === 'adult' ? 3 : dragon.stage === 'teen' ? 2 : 1;
+  const range = dragon.stage === 'adult' ? 50 : dragon.stage === 'teen' ? 35 : 20;
+  const dp = dragon.pos;
+
+  // Find nearest resource
+  let nearest = null;
+  let nearDist = Infinity;
+  interactables.forEach(obj => {
+    if (obj.type === 'dragon' || obj.type === 'craft_station' || obj.type === 'farm_plot') return;
+    if (!obj.hasItems) return;
+    const d = Math.sqrt((dp.x - obj.x)**2 + (dp.z - obj.z)**2);
+    if (d < range && d < nearDist) { nearDist = d; nearest = obj; }
+  });
+
+  // Check crops
+  let growingCrop = null;
+  farmPlots.forEach(p => {
+    if (p.state === 'growing') {
+      const d = Math.sqrt((dp.x - p.x)**2 + (dp.z - p.z)**2);
+      if (d < range && (!nearest || d < nearDist * 0.5)) growingCrop = p;
+    }
+  });
+
+  if (nearest) {
+    dragon.helpTask = {
+      type: 'gather',
+      target: nearest,
+      phase: 'running', // running -> arriving -> breathing -> done
+      timer: 0,
+      bonus,
+    };
+    notify('Dragon is going to help gather!');
+  } else if (growingCrop) {
+    dragon.helpTask = {
+      type: 'tend',
+      target: growingCrop,
+      phase: 'running',
+      timer: 0,
+      bonus,
+    };
+    notify('Dragon is going to tend the crops!');
+  } else {
+    notify('Nothing nearby for the dragon to help with.', 'warn');
+  }
+}
+
+// ===================== NOTIFICATIONS =====================
+function notify(text, type) {
+  const el = document.createElement('div');
+  el.className = 'notification' + (type ? ' ' + type : '');
+  el.textContent = text;
+  document.getElementById('notifications').appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+}
+
+// ===================== UI UPDATE =====================
+function updateUI() {
+  document.getElementById('inv-apples').textContent = inventory.apples;
+  document.getElementById('inv-fruits').textContent = inventory.fruits;
+  document.getElementById('inv-minerals').textContent = inventory.minerals;
+  document.getElementById('inv-crops').textContent = inventory.crops;
+
+  const stageNames = { kid: 'Baby', teen: 'Teen', adult: 'Adult' };
+  document.getElementById('dr-stage').textContent = stageNames[dragon.stage];
+  document.getElementById('dr-fed').textContent = dragon.fedApples;
+
+  let nextText, progress;
+  if (dragon.stage === 'kid') {
+    nextText = (CFG.DRAGON_KID_TO_TEEN - dragon.fedApples) + ' apples to Teen';
+    progress = (dragon.fedApples / CFG.DRAGON_KID_TO_TEEN) * 100;
+  } else if (dragon.stage === 'teen') {
+    nextText = (CFG.DRAGON_TEEN_TO_ADULT - dragon.fedApples) + ' apples to Adult';
+    progress = ((dragon.fedApples - CFG.DRAGON_KID_TO_TEEN) / (CFG.DRAGON_TEEN_TO_ADULT - CFG.DRAGON_KID_TO_TEEN)) * 100;
+  } else {
+    nextText = 'Fully grown!'; progress = 100;
+  }
+  document.getElementById('dr-next').textContent = nextText;
+  document.getElementById('progress-fill').style.width = Math.min(100, progress) + '%';
+
+  const armorEl = document.getElementById('armor-display');
+  if (armorLevel > 0) {
+    armorEl.style.display = 'block';
+    const names = ['Bronze Armor', 'Iron Armor', 'Crystal Armor'];
+    document.getElementById('armor-text').textContent = names[armorLevel-1];
+  }
+
+  const promptEl = document.getElementById('prompt');
+  if (currentPrompt) {
+    promptEl.style.display = 'block';
+    document.getElementById('prompt-text').textContent = currentPrompt;
+  } else {
+    promptEl.style.display = 'none';
+  }
+}
+
+// ===================== INTERACTIONS =====================
+function findNearestInteractable() {
+  let nearest = null;
+  let nearDist = CFG.INTERACT_RANGE;
+  const px = isRiding ? dragonGroup.position.x : playerPos.x;
+  const pz = isRiding ? dragonGroup.position.z : playerPos.z;
+
+  interactables.forEach(obj => {
+    const ox = obj.type === 'dragon' ? dragon.pos.x : obj.x;
+    const oz = obj.type === 'dragon' ? dragon.pos.z : obj.z;
+    const d = Math.sqrt((px-ox)**2 + (pz-oz)**2);
+    if (d < nearDist) {
+      const prompt = obj.getPrompt();
+      if (prompt) { nearDist = d; nearest = obj; }
+    }
+  });
+  return nearest;
+}
+
+// ===================== PLAYER UPDATE =====================
+function updatePlayer(dt) {
+  if (isRiding) { updateRiding(dt); return; }
+
+  const moveDir = new THREE.Vector3();
+  const forward = new THREE.Vector3(-Math.sin(cameraYaw), 0, -Math.cos(cameraYaw));
+  const right = new THREE.Vector3(-forward.z, 0, forward.x);
+
+  if (keys['w'] || keys['arrowup']) moveDir.add(forward);
+  if (keys['s'] || keys['arrowdown']) moveDir.sub(forward);
+  if (keys['a'] || keys['arrowleft']) moveDir.sub(right);
+  if (keys['d'] || keys['arrowright']) moveDir.add(right);
+
+  const isMoving = moveDir.length() > 0.01;
+  if (isMoving) {
+    moveDir.normalize();
+    const speed = keys['shift'] ? CFG.PLAYER_RUN_SPEED : CFG.PLAYER_SPEED;
+    playerPos.x += moveDir.x * speed * dt;
+    playerPos.z += moveDir.z * speed * dt;
+    playerFacing = Math.atan2(moveDir.x, moveDir.z);
+  }
+
+  const dist = Math.sqrt(playerPos.x**2 + playerPos.z**2);
+  if (dist > CFG.ISLAND_RADIUS * 0.9) {
+    const scale = (CFG.ISLAND_RADIUS * 0.9) / dist;
+    playerPos.x *= scale; playerPos.z *= scale;
+  }
+
+  const terrainH = getTerrainHeight(playerPos.x, playerPos.z);
+  if (keys[' '] && isGrounded) { playerVelY = CFG.JUMP_FORCE; isGrounded = false; }
+  playerVelY -= CFG.GRAVITY * dt;
+  playerPos.y += playerVelY * dt;
+  if (playerPos.y <= terrainH) { playerPos.y = terrainH; playerVelY = 0; isGrounded = true; }
+
+  playerGroup.position.copy(playerPos);
+
+  const targetRot = playerFacing;
+  let diff = targetRot - playerGroup.rotation.y;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  playerGroup.rotation.y += diff * Math.min(1, 10 * dt);
+
+  if (isMoving) {
+    walkCycle += dt * (keys['shift'] ? 12 : 8);
+    const swing = Math.sin(walkCycle) * 0.5;
+    playerGroup.userData.armL.rotation.x = swing;
+    playerGroup.userData.armR.rotation.x = -swing;
+    playerGroup.userData.handL.position.y = 0.95 + Math.sin(walkCycle) * 0.15;
+    playerGroup.userData.handR.position.y = 0.95 - Math.sin(walkCycle) * 0.15;
+    playerGroup.userData.legL.rotation.x = -swing * 0.7;
+    playerGroup.userData.legR.rotation.x = swing * 0.7;
+    playerGroup.position.y += Math.abs(Math.sin(walkCycle * 2)) * 0.05;
+  } else {
+    walkCycle = 0;
+    playerGroup.userData.armL.rotation.x *= 0.9;
+    playerGroup.userData.armR.rotation.x *= 0.9;
+    playerGroup.userData.legL.rotation.x *= 0.9;
+    playerGroup.userData.legR.rotation.x *= 0.9;
+    playerGroup.userData.handL.position.y = 0.95;
+    playerGroup.userData.handR.position.y = 0.95;
+  }
+}
+
+// ===================== RIDING UPDATE =====================
+function updateRiding(dt) {
+  const moveDir = new THREE.Vector3();
+  const forward = new THREE.Vector3(-Math.sin(cameraYaw), 0, -Math.cos(cameraYaw));
+  const right = new THREE.Vector3(-forward.z, 0, forward.x);
+  const speed = 30;
+  if (keys['w']||keys['arrowup']) moveDir.add(forward);
+  if (keys['s']||keys['arrowdown']) moveDir.sub(forward);
+  if (keys['a']||keys['arrowleft']) moveDir.sub(right);
+  if (keys['d']||keys['arrowright']) moveDir.add(right);
+  if (moveDir.length() > 0.01) moveDir.normalize();
+
+  const drPos = dragonGroup.position;
+  drPos.x += moveDir.x * speed * dt;
+  drPos.z += moveDir.z * speed * dt;
+  if (keys[' ']) { isFlying = true; drPos.y += 15 * dt; }
+  if (keys['shift']) drPos.y -= 15 * dt;
+
+  const terrainH = getTerrainHeight(drPos.x, drPos.z);
+  const minH = Math.max(terrainH, CFG.WATER_LEVEL) + 1.5;
+  if (drPos.y < minH) { drPos.y = minH; if (!keys[' ']) isFlying = drPos.y > terrainH + 3; }
+  if (drPos.y > 80) drPos.y = 80;
+
+  const maxDist = 180;
+  const dstCenter = Math.sqrt(drPos.x**2 + drPos.z**2);
+  if (dstCenter > maxDist) { drPos.x *= maxDist/dstCenter; drPos.z *= maxDist/dstCenter; }
+
+  if (moveDir.length() > 0.01) {
+    const targetRot = Math.atan2(moveDir.x, moveDir.z);
+    let diff = targetRot - dragonGroup.rotation.y;
+    while (diff > Math.PI) diff -= Math.PI*2;
+    while (diff < -Math.PI) diff += Math.PI*2;
+    dragonGroup.rotation.y += diff * Math.min(1, 5*dt);
+  }
+  if (isFlying) {
+    const tiltTarget = keys[' '] ? -0.2 : keys['shift'] ? 0.2 : 0;
+    dragonGroup.rotation.x += (tiltTarget - dragonGroup.rotation.x) * 3 * dt;
+    // Wind particles when flying fast
+    if (moveDir.length() > 0.5 && Math.random() < 0.3) {
+      const p = drPos.clone();
+      p.x += (Math.random()-0.5)*3; p.z += (Math.random()-0.5)*3;
+      spawnParticles(p, 0xffffff, 1, 0.5, 1, 0.4, 0.05);
+    }
+  } else {
+    dragonGroup.rotation.x *= 0.95;
+  }
+  dragon.pos.copy(drPos);
+  playerPos.copy(drPos);
+}
+
+// ===================== DRAGON AI =====================
+function dragonFaceDirection(dx, dz, dt, speed) {
+  const targetRot = Math.atan2(dx, dz);
+  let diff = targetRot - dragonGroup.rotation.y;
+  while (diff > Math.PI) diff -= Math.PI*2;
+  while (diff < -Math.PI) diff += Math.PI*2;
+  dragonGroup.rotation.y += diff * Math.min(1, (speed||5) * dt);
+}
+
+function dragonMoveToward(tx, tz, speed, dt) {
+  const dx = tx - dragon.pos.x;
+  const dz = tz - dragon.pos.z;
+  const dist = Math.sqrt(dx*dx + dz*dz);
+  if (dist < 0.5) return dist;
+  const step = Math.min(speed * dt, dist);
+  dragon.pos.x += (dx/dist) * step;
+  dragon.pos.z += (dz/dist) * step;
+  dragonFaceDirection(dx, dz, dt, 6);
+  return dist;
+}
+
+function getDragonSnoutWorld() {
+  const s = dragonGroup.userData.scale || 0.5;
+  const dir = new THREE.Vector3(0, 0.3*s, 2.0*s);
+  dir.applyQuaternion(dragonGroup.quaternion);
+  return dragonGroup.position.clone().add(dir);
+}
+
+function updateDragon(dt) {
+  if (isRiding) {
+    dragonAnimCycle += dt * (isFlying ? 6 : 3);
+    const wingFlap = Math.sin(dragonAnimCycle) * (isFlying ? 0.8 : 0.3);
+    if (dragonGroup.userData.wingL) {
+      dragonGroup.userData.wingL.rotation.x = -0.2 + wingFlap;
+      dragonGroup.userData.wingR.rotation.x = -0.2 + wingFlap;
+    }
+    return;
+  }
+
+  dragonAnimCycle += dt * 2;
+  const s = dragonGroup.userData.scale || 1;
+  const dx = playerPos.x - dragon.pos.x;
+  const dz = playerPos.z - dragon.pos.z;
+  const distToPlayer = Math.sqrt(dx*dx + dz*dz);
+
+  if (dragon.autoHelpCooldown > 0) dragon.autoHelpCooldown -= dt;
+  if (dragon.breathTimer > 0) dragon.breathTimer -= dt;
+
+  const baseSpeed = dragon.stage === 'adult' ? 16 : dragon.stage === 'teen' ? 12 : 9;
+  const followDist = dragon.befriended ? (dragon.stage === 'adult' ? 6 : dragon.stage === 'teen' ? 4 : 3) : 8;
+
+  if (distToPlayer > 50) {
+    const angle = Math.random() * Math.PI * 2;
+    dragon.pos.x = playerPos.x + Math.cos(angle) * 5;
+    dragon.pos.z = playerPos.z + Math.sin(angle) * 5;
+  }
+
+  // Nap
+  if (dragon.stage === 'kid' && !dragon.befriended) {
+    dragon.napTimer -= dt;
+    if (dragon.napTimer <= 0 && !dragon.isNapping && distToPlayer > 15 && Math.random() < 0.3) {
+      dragon.isNapping = true; dragon.napTimer = 6 + Math.random() * 4;
+    }
+    if (dragon.isNapping) { dragon.napTimer -= dt; if (dragon.napTimer <= 0 || distToPlayer < 8) dragon.isNapping = false; }
+  } else { dragon.isNapping = false; }
+
+  // Curiosity
+  dragon.curiosityTimer -= dt;
+  if (dragon.curiosityTimer <= 0 && !dragon.isNapping && distToPlayer < 20 && !dragon.helpTask) {
+    dragon.curiosityTimer = 5 + Math.random() * 8;
+    const nearby = interactables.filter(o =>
+      o.type !== 'dragon' && o.type !== 'craft_station' &&
+      Math.sqrt((dragon.pos.x - o.x)**2 + (dragon.pos.z - o.z)**2) < 20
+    );
+    if (nearby.length > 0 && Math.random() < 0.4) {
+      dragon.curiosityTarget = nearby[Math.floor(Math.random()*nearby.length)];
+      dragon.sniffTimer = 2.0;
+    }
+  }
+
+  let isMoving = false;
+
+  // === HELP TASK: dragon visually goes to target ===
+  if (dragon.helpTask) {
+    const task = dragon.helpTask;
+    const t = task.target;
+    const tx = t.x; const tz = t.z;
+
+    if (task.phase === 'running') {
+      const d = dragonMoveToward(tx, tz, baseSpeed * 1.4, dt);
+      isMoving = d > 2;
+      if (d <= 2.5) {
+        task.phase = 'arriving';
+        task.timer = 0.5;
+        dragonFaceDirection(tx - dragon.pos.x, tz - dragon.pos.z, dt, 20);
+      }
+    } else if (task.phase === 'arriving') {
+      task.timer -= dt;
+      dragonFaceDirection(tx - dragon.pos.x, tz - dragon.pos.z, dt, 10);
+      if (task.timer <= 0) {
+        task.phase = 'breathing';
+        task.timer = 1.2;
+        dragon.breathTimer = 1.2;
+      }
+    } else if (task.phase === 'breathing') {
+      task.timer -= dt;
+      dragonFaceDirection(tx - dragon.pos.x, tz - dragon.pos.z, dt, 10);
+
+      // Fire breath particles!
+      const snoutPos = getDragonSnoutWorld();
+      const breathDir = new THREE.Vector3(tx - dragon.pos.x, 0.3, tz - dragon.pos.z).normalize();
+
+      if (task.type === 'gather') {
+        if (Math.random() < 0.6) {
+          const c1 = t.type === 'rock' ? 0x6699ff : 0xff8833;
+          const c2 = t.type === 'rock' ? 0xaabbff : 0xffcc44;
+          spawnFireBreath(snoutPos, breathDir, c1, c2, 2);
+        }
+      } else {
+        if (Math.random() < 0.5) {
+          spawnFireBreath(snoutPos, breathDir, 0x44dd44, 0xaaff66, 2);
+        }
+      }
+
+      if (task.timer <= 0) {
+        // Complete the task
+        if (task.type === 'gather' && t.hasItems) {
+          t.interact();
+          if (t.type === 'apple_tree') inventory.apples += task.bonus;
+          else if (t.type === 'fruit_tree') inventory.fruits += task.bonus;
+          else if (t.type === 'rock') inventory.minerals += task.bonus;
+          notify('Dragon gathered! (+' + task.bonus + ' bonus)');
+        } else if (task.type === 'tend') {
+          const speedup = dragon.stage === 'adult' ? 15 : dragon.stage === 'teen' ? 10 : 5;
+          farmPlots.forEach(p => {
+            if (p.state === 'growing') {
+              p.growTimer = Math.max(0, p.growTimer - speedup);
+              p.updateVisual();
+            }
+          });
+          notify('Dragon tended the crops!');
+        }
+        dragon.happyTimer = 0.8;
+        dragon.autoHelpCooldown = 3;
+        dragon.helpTask = null;
+      }
+    }
+  }
+  // Curiosity
+  else if (dragon.curiosityTarget && dragon.sniffTimer > 0) {
+    dragon.sniffTimer -= dt;
+    const ct = dragon.curiosityTarget;
+    const d = dragonMoveToward(ct.x, ct.z, baseSpeed * 0.7, dt);
+    isMoving = d > 2;
+    // Sniff particles near target
+    if (d < 3 && Math.random() < 0.15) {
+      const sp = getDragonSnoutWorld();
+      spawnParticles(sp, 0xcccccc, 1, 0.3, 1, 0.5, 0.04);
+    }
+    if (dragon.sniffTimer <= 0) dragon.curiosityTarget = null;
+  }
+  else if (dragon.isNapping) { isMoving = false; }
+  else if (distToPlayer > followDist) {
+    const speed = distToPlayer > 20 ? baseSpeed * 1.6 : baseSpeed;
+    dragonMoveToward(playerPos.x, playerPos.z, speed, dt);
+    isMoving = true;
+  }
+  else {
+    dragon.playTimer -= dt;
+    if (dragon.playTimer <= 0) {
+      dragon.playTimer = 1.5 + Math.random() * 3;
+      const angle = Math.random() * Math.PI * 2;
+      const r = 2 + Math.random() * (followDist - 1);
+      dragon.targetPos.set(playerPos.x + Math.cos(angle)*r, 0, playerPos.z + Math.sin(angle)*r);
+    }
+    const d = dragonMoveToward(dragon.targetPos.x, dragon.targetPos.z, baseSpeed * 0.4, dt);
+    isMoving = d > 1;
+    if (!isMoving) dragonFaceDirection(dx, dz, dt, 2);
+  }
+
+  // Auto crop tend
+  if (dragon.befriended && dragon.autoHelpCooldown <= 0 && !dragon.helpTask) {
+    interactables.forEach(obj => {
+      if (obj.type === 'farm_plot' && obj.state === 'growing') {
+        const d = Math.sqrt((dragon.pos.x - obj.x)**2 + (dragon.pos.z - obj.z)**2);
+        if (d < 10) {
+          const boost = dragon.stage === 'adult' ? 3 : dragon.stage === 'teen' ? 2 : 0.5;
+          obj.growTimer = Math.max(0, obj.growTimer - boost * dt);
+        }
+      }
+    });
+  }
+
+  // Position
+  const th = getTerrainHeight(dragon.pos.x, dragon.pos.z);
+  dragon.pos.y = th;
+  const yOff = dragon.stage === 'adult' ? 0.5 : dragon.stage === 'teen' ? 0.2 : 0;
+  dragonGroup.position.set(dragon.pos.x, th + yOff, dragon.pos.z);
+
+  if (dragon.happyTimer > 0) {
+    dragon.happyTimer -= dt;
+    dragonGroup.position.y += Math.abs(Math.sin(dragon.happyTimer * 10)) * 1.5;
+  }
+
+  dragon.bobOffset = Math.sin(dragonAnimCycle * 0.5) * 0.2;
+  dragonGroup.position.y += dragon.bobOffset;
+
+  if (dragon.isNapping) {
+    dragonGroup.position.y -= 0.3 * s;
+    dragonGroup.rotation.x += (0.1 - dragonGroup.rotation.x) * 3 * dt;
+  } else {
+    dragonGroup.rotation.x *= 0.9;
+  }
+
+  // Wings
+  if (dragonGroup.userData.wingL) {
+    let wingFlap;
+    if (dragon.isNapping) wingFlap = -0.4;
+    else if (dragon.helpTask && dragon.helpTask.phase === 'running') wingFlap = Math.sin(dragonAnimCycle * 4) * 0.5;
+    else if (isMoving) wingFlap = Math.sin(dragonAnimCycle * 2.5) * 0.3;
+    else wingFlap = Math.sin(dragonAnimCycle * 1.0) * 0.1;
+    dragonGroup.userData.wingL.rotation.z = wingFlap;
+    dragonGroup.userData.wingR.rotation.z = -wingFlap;
+  }
+
+  // Tail wag
+  if (distToPlayer < 8 || dragon.happyTimer > 0) dragon.tailWag += dt * 8;
+  else dragon.tailWag += dt * 2;
+  if (dragonGroup.userData.tail) {
+    const wagAmp = (distToPlayer < 8 || dragon.happyTimer > 0) ? 0.3 : 0.1;
+    dragonGroup.userData.tail.rotation.y = Math.sin(dragon.tailWag) * wagAmp;
+  }
+
+  // Head
+  if (dragonGroup.userData.head) {
+    let lookX = dx, lookZ = dz;
+    if (dragon.helpTask && dragon.helpTask.phase !== 'running') {
+      lookX = dragon.helpTask.target.x - dragon.pos.x;
+      lookZ = dragon.helpTask.target.z - dragon.pos.z;
+    }
+    const headTarget = new THREE.Vector3(lookX, 0, lookZ);
+    if (headTarget.length() > 0.1) {
+      headTarget.normalize();
+      const localAngle = Math.atan2(headTarget.x, headTarget.z) - dragonGroup.rotation.y;
+      const clampedAngle = Math.max(-0.6, Math.min(0.6, localAngle));
+      dragonGroup.userData.head.rotation.y += (clampedAngle * 0.4 - dragonGroup.userData.head.rotation.y) * 3 * dt;
+      if (distToPlayer < 5 && !dragon.helpTask) {
+        dragonGroup.userData.head.rotation.x += (0.2 - dragonGroup.userData.head.rotation.x) * 2 * dt;
+      } else if (dragon.breathTimer > 0) {
+        dragonGroup.userData.head.rotation.x += (-0.15 - dragonGroup.userData.head.rotation.x) * 3 * dt;
+      } else {
+        dragonGroup.userData.head.rotation.x *= 0.95;
+      }
+    }
+  }
+
+  // Legs
+  if (dragonGroup.userData.legs && dragonGroup.userData.legs.length >= 4) {
+    const legSwing = isMoving ? Math.sin(dragonAnimCycle * 3) * 0.3 : 0;
+    dragonGroup.userData.legs[0].rotation.x = legSwing;
+    dragonGroup.userData.legs[1].rotation.x = -legSwing;
+    dragonGroup.userData.legs[2].rotation.x = -legSwing;
+    dragonGroup.userData.legs[3].rotation.x = legSwing;
+  }
+
+  // Dragon glow pulse
+  if (dragonGroup.userData.glow) {
+    dragonGroup.userData.glow.intensity = 0.3 + Math.sin(dragonAnimCycle) * 0.15;
+  }
+}
+
+// ===================== CAMERA =====================
+function updateCamera(dt) {
+  const target = isRiding ? dragonGroup.position : playerPos;
+  const dist = isRiding ? 25 : CFG.CAM_DISTANCE;
+  const height = isRiding ? (isFlying ? 12 : 10) : CFG.CAM_HEIGHT;
+  cameraPitch = Math.max(-0.5, Math.min(1.2, cameraPitch));
+
+  const camX = target.x + Math.sin(cameraYaw) * Math.cos(cameraPitch) * dist;
+  const camZ = target.z + Math.cos(cameraYaw) * Math.cos(cameraPitch) * dist;
+  const camY = target.y + height + Math.sin(cameraPitch) * dist * 0.5;
+
+  camera.position.lerp(new THREE.Vector3(camX, camY, camZ), Math.min(1, 8 * dt));
+  camera.lookAt(new THREE.Vector3(target.x, target.y + 2, target.z));
+
+  sun.position.set(target.x + 60, 80, target.z + 40);
+  sun.target.position.copy(target);
+  skyDome.position.set(target.x, 0, target.z);
+}
+
+// ===================== WORLD UPDATES =====================
+function updateWorld(dt) {
+  const elapsed = clock.getElapsedTime();
+
+  interactables.forEach(obj => {
+    if (obj.respawnTimer > 0) {
+      obj.respawnTimer -= dt;
+      if (obj.respawnTimer <= 0) {
+        if (obj.respawn) obj.respawn();
+        else {
+          obj.hasItems = true;
+          if (obj.apples) obj.apples.visible = true;
+          if (obj.fruits) obj.fruits.visible = true;
+          if (obj.crystals) obj.crystals.forEach(c => c.visible = true);
+        }
+      }
+    }
+    // Crystal glow pulse
+    if (obj.type === 'rock' && obj.hasItems && obj.crystalLight) {
+      obj.crystalLight.intensity = 0.25 + Math.sin(elapsed * 2 + obj.x) * 0.15;
+    }
+  });
+
+  farmPlots.forEach(plot => {
+    if (plot.state === 'growing') {
+      plot.growTimer -= dt;
+      if (plot.growTimer <= 0) {
+        plot.state = 'mature';
+        plot.updateVisual();
+        spawnParticles(new THREE.Vector3(plot.x, getTerrainHeight(plot.x, plot.z)+1.5, plot.z), 0xffee44, 8, 2, 2, 1.0, 0.1);
+        notify('A crop is ready to harvest!');
+      } else if (Math.floor(plot.growTimer) % 8 === 0) {
+        plot.updateVisual();
+      }
+    }
+  });
+
+  clouds.forEach(c => {
+    c.userData.angle += c.userData.speed * dt * 0.008;
+    c.position.x = Math.cos(c.userData.angle) * c.userData.dist;
+    c.position.z = Math.sin(c.userData.angle) * c.userData.dist;
+  });
+
+  // Animated water waves
+  const wPos = waterGeo.attributes.position;
+  for (let i = 0; i < wPos.count; i++) {
+    const x = wPos.getX(i);
+    const z = wPos.getZ(i);
+    wPos.setY(i, Math.sin(x * 0.04 + elapsed * 0.8) * 0.3 + Math.cos(z * 0.05 + elapsed * 0.6) * 0.2);
+  }
+  wPos.needsUpdate = true;
+  water.position.y = CFG.WATER_LEVEL;
+
+  // Craft station fire flicker
+  interactables.forEach(obj => {
+    if (obj.type === 'craft_station' && obj.group.userData.fireLight) {
+      obj.group.userData.fireLight.intensity = 0.4 + Math.sin(elapsed * 8) * 0.15 + Math.sin(elapsed * 13) * 0.1;
+    }
+  });
+
+  updateParticles(dt);
+}
+
+// ===================== CONTROLS =====================
+function setupControls() {
+  document.addEventListener('keydown', e => {
+    keys[e.key.toLowerCase()] = true;
+    if (e.key.toLowerCase() === 'e' && gameStarted) {
+      const target = findNearestInteractable();
+      if (target) target.interact();
+    }
+    if (e.key.toLowerCase() === 'c' && gameStarted) tryCraft();
+    if (e.key.toLowerCase() === 'f' && gameStarted) {
+      if (isRiding && inventory.apples > 0) {
+        inventory.apples--; dragon.fedApples++; dragon.happyTimer = 1.0;
+        const dp = dragonGroup.position.clone(); dp.y += 2;
+        spawnParticles(dp, 0xff6688, 6, 1, 3, 1.2, 0.13);
+        notify('Fed the dragon while riding!');
+      } else {
+        dragonHelp();
+      }
+    }
+  });
+  document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+  document.addEventListener('mousemove', e => {
+    if (document.pointerLockElement === renderer.domElement) {
+      cameraYaw -= e.movementX * CFG.CAM_SENSITIVITY;
+      cameraPitch += e.movementY * CFG.CAM_SENSITIVITY;
+    }
+  });
+  renderer.domElement.addEventListener('click', () => {
+    if (!gameStarted) return;
+    if (document.pointerLockElement !== renderer.domElement) renderer.domElement.requestPointerLock();
+  });
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+  document.getElementById('start-screen').addEventListener('click', () => {
+    document.getElementById('start-screen').style.display = 'none';
+    document.getElementById('hud').style.display = 'block';
+    document.getElementById('dragon-panel').style.display = 'block';
+    document.getElementById('crosshair').style.display = 'block';
+    document.getElementById('help-toggle').style.display = 'block';
+    gameStarted = true;
+    renderer.domElement.requestPointerLock();
+    notify('Welcome to Dragon Island! A baby dragon is right beside you — find apples to befriend it!');
+  });
+}
+
+// ===================== GAME LOOP =====================
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.1);
+  if (!gameStarted) {
+    const t = clock.getElapsedTime();
+    camera.position.set(Math.sin(t*0.1)*80, 35+Math.sin(t*0.15)*5, Math.cos(t*0.1)*80);
+    camera.lookAt(0, 5, 0);
+    renderer.render(scene, camera);
+    return;
+  }
+  updatePlayer(dt);
+  updateDragon(dt);
+  updateCamera(dt);
+  updateWorld(dt);
+  const target = findNearestInteractable();
+  currentPrompt = target ? target.getPrompt() : null;
+  updateUI();
+  renderer.render(scene, camera);
+}
+
+// ===================== INIT =====================
+function init() {
+  setupScene();
+  createTerrain();
+  createPlayer();
+  populateIsland();
+  setupControls();
+  animate();
+}
+init();
+</script>
+</body>
+</html>
