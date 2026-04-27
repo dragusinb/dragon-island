@@ -135,7 +135,7 @@ canvas{display:block}
   <button id="continue-btn" onclick="continueGame()" style="display:none;margin-top:10px;padding:10px 28px;font-size:16px;background:linear-gradient(135deg,#a855f7,#7c3aed);color:white;border:none;border-radius:8px;cursor:pointer;letter-spacing:1px">Continue Saved Game</button>
   <div class="ctrls">
     <span>WASD</span> Move &bull; <span>Mouse</span> Look &bull; <span>E</span> Interact &bull; <span>Space</span> Jump / Fly Up<br>
-    <span>Shift</span> Fly Down &bull; <span>F</span> Dragon Help &bull; <span>Double-Space</span> Glide (Space again to stop)
+    <span>Shift</span> Fly Down &bull; <span>F</span> Dragon Help &bull; <span>R</span> Call &amp; Mount Dragon &bull; <span>Double-Space</span> Glide (Space again to stop)
   </div>
 </div>
 <div id="hud">
@@ -375,6 +375,7 @@ const dragon = {
   idleTimer:0, happyTimer:0, curiosityTimer:0, curiosityTarget:null,
   playTimer:0, sniffTimer:0, napTimer:0, isNapping:false,
   autoHelpCooldown:0, tailWag:0, helpTask:null, breathTimer:0,
+  calling:false,
 };
 const interactables = [];
 const farmPlots = [];
@@ -799,7 +800,7 @@ function evolveDragon(ns){
   const op=dragonGroup.position.clone(),or=dragonGroup.rotation.y;scene.remove(dragonGroup);dragon.stage=ns;
   dragonGroup=createDragonModel(dragon.species,ns);dragonGroup.position.copy(op);dragonGroup.rotation.y=or;scene.add(dragonGroup);
   spawnBurst(op,[0xffd700,0xffaa00,0xffffff,0x88ff88,0xff88ff],50);
-  notify(ns==='teen'?'Dragon evolved to TEEN! It can help gather resources!':'Dragon evolved to ADULT! Press E to RIDE and FLY!','epic');saveGame();
+  notify(ns==='teen'?'Dragon evolved to TEEN! It can help gather resources!':'Dragon evolved to ADULT! Press R to CALL & RIDE!','epic');saveGame();
 }
 
 // ===== NPC MODEL =====
@@ -1073,7 +1074,7 @@ const dragonInteract = {
     feedDragonRaw()},
   getPrompt(){
     if(isRiding)return 'Dismount Dragon';
-    if(dragon.stage==='adult'&&dragon.befriended)return 'Ride Dragon';
+    if(dragon.stage==='adult'&&dragon.befriended)return 'Ride Dragon (or press R)';
     if(dragon.befriended)return inv.apple>0?'Feed Apple':'Need Apples to Feed';
     return inv.apple>0?'Offer Apple to Baby Dragon':'Find apples to befriend'}
 };
@@ -1603,12 +1604,13 @@ function updateDragon(dt){
       if(task.timer<=0){if(task.type==='gather'&&t.hasItems){t.interact();if(task.bonus>0){const res=t.type.includes('apple')?'apple':t.type.includes('berry')?'berry':t.type.includes('herb')?'herb':t.type.includes('mushroom')?'mushroom':t.type.includes('stone')?'stone':t.type.includes('iron')?'iron':'crystal';inv[res]+=task.bonus;notify('Dragon bonus: +'+task.bonus+'!')}}
         else if(task.type==='tend'){const spdup=dragon.stage==='adult'?15:dragon.stage==='teen'?10:5;farmPlots.forEach(p=>{if(p.state==='growing'){p.growTimer=Math.max(0,p.growTimer-spdup);p.updateVis()}});notify('Dragon tended crops!')}
         dragon.happyTimer=0.8;dragon.autoHelpCooldown=3;dragon.helpTask=null}}}
+  else if(dragon.calling){dragonMoveTo(playerPos.x,playerPos.z,baseSpd*2.5,dt);isMoving=true;dragonFaceDir(dx,dz,dt,15);if(distP<3){dragon.calling=false;if(dragon.stage==='adult'&&dragon.befriended){mountDragon();notify('Dragon arrived! Mounted!')}}}
   else if(dragon.curiosityTarget&&dragon.sniffTimer>0){dragon.sniffTimer-=dt;const d=dragonMoveTo(dragon.curiosityTarget.x,dragon.curiosityTarget.z,baseSpd*0.7,dt);isMoving=d>2;if(d<3&&Math.random()<0.15){spawnParticles(getDragonSnout(),0xcccccc,1,0.3,1,0.5,0.04)}if(dragon.sniffTimer<=0)dragon.curiosityTarget=null}
   else if(dragon.isNapping){isMoving=false}
   else if(distP>followD){dragonMoveTo(playerPos.x,playerPos.z,distP>20?baseSpd*1.6:baseSpd,dt);isMoving=true}
   else{dragon.playTimer-=dt;if(dragon.playTimer<=0){dragon.playTimer=1.5+Math.random()*3;const a=Math.random()*Math.PI*2,r=followD+1+Math.random()*3;dragon.targetPos.set(playerPos.x+Math.cos(a)*r,0,playerPos.z+Math.sin(a)*r)}const d=dragonMoveTo(dragon.targetPos.x,dragon.targetPos.z,baseSpd*0.4,dt);isMoving=d>1;if(!isMoving)dragonFaceDir(dx,dz,dt,2)}
   // Push dragon away if too close
-  if(distP<followD*0.6&&distP>0.1&&!dragon.helpTask){const push=followD*0.6-distP;dragon.pos.x-=(dx/distP)*push;dragon.pos.z-=(dz/distP)*push}
+  if(distP<followD*0.6&&distP>0.1&&!dragon.helpTask&&!dragon.calling){const push=followD*0.6-distP;dragon.pos.x-=(dx/distP)*push;dragon.pos.z-=(dz/distP)*push}
   // Auto crop tend
   if(dragon.befriended&&dragon.autoHelpCooldown<=0&&!dragon.helpTask){interactables.forEach(obj=>{if(obj.type==='farm_plot'&&obj.state==='growing'){const d=Math.sqrt((dragon.pos.x-obj.x)**2+(dragon.pos.z-obj.z)**2);if(d<10){obj.growTimer=Math.max(0,obj.growTimer-(dragon.stage==='adult'?3:dragon.stage==='teen'?2:0.5)*dt)}}})}
   // Position
@@ -1667,6 +1669,7 @@ function setupControls(){
     if(menuOpen)return;
     keys[e.key.toLowerCase()]=true;
     if(e.key.toLowerCase()==='e'&&gameStarted){const t=findNearestInteractable();if(t)t.interact()}
+    if(e.key.toLowerCase()==='r'&&gameStarted&&!isRiding&&dragon.stage==='adult'&&dragon.befriended){dragon.calling=true;dragon.helpTask=null;dragon.curiosityTarget=null;dragon.isNapping=false;notify('Calling dragon...')}
     if(e.key.toLowerCase()==='f'&&gameStarted){if(isRiding&&inv.apple>0){inv.apple--;dragon.xp++;dragon.happyTimer=1;const dp=dragonGroup.position.clone();dp.y+=2;spawnParticles(dp,0xff6688,6,1,3,1.2,0.13);notify('Fed while riding! +1 XP');checkDragonEvolve()}else dragonHelp()}
     if(e.key===' '&&gameStarted&&!isRiding){if(isGliding){isGliding=false}else{const now=Date.now();if(now-lastSpaceTime<350&&!isGrounded){isGliding=true;playerVelY=-1.5}lastSpaceTime=now}}
   });
