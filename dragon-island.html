@@ -61,6 +61,8 @@ canvas{display:block}
 .npc-hdr h2{color:#4ade80;font-size:18px}
 .npc-close{background:none;border:1px solid rgba(255,255,255,0.2);color:#94a3b8;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:14px}
 .npc-close:hover{color:#fff;border-color:#fff}
+@keyframes btnFlash{0%{box-shadow:0 0 0 0 rgba(251,191,36,0.6)}50%{box-shadow:0 0 12px 4px rgba(251,191,36,0.4)}100%{box-shadow:none}}
+.btn-flash{animation:btnFlash 0.4s ease-out}
 .npc-tabs{display:flex;gap:6px;margin-bottom:12px}
 .npc-tab{padding:6px 14px;border:1px solid rgba(255,255,255,0.15);border-radius:6px;background:none;color:#94a3b8;cursor:pointer;font-size:12px}
 .npc-tab.active{background:rgba(74,222,128,0.2);color:#4ade80;border-color:#4ade80}
@@ -68,8 +70,9 @@ canvas{display:block}
 .npc-chat{color:#c4b5fd;line-height:1.6;padding:8px}
 .shop-item{display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid rgba(255,255,255,0.05)}
 .shop-item:hover{background:rgba(255,255,255,0.05)}
-.shop-buy{padding:4px 10px;border-radius:4px;border:1px solid #fbbf24;color:#fbbf24;background:none;cursor:pointer;font-size:11px}
+.shop-buy{padding:4px 10px;border-radius:4px;border:1px solid #fbbf24;color:#fbbf24;background:none;cursor:pointer;font-size:11px;transition:all 0.15s}
 .shop-buy:hover{background:rgba(251,191,36,0.2)}
+.shop-buy:active{background:#fbbf24;color:#1a1a2e;transform:scale(0.93);transition:all 0.05s}
 .shop-buy:disabled{opacity:0.3;cursor:not-allowed}
 .shop-info{flex:1}
 .shop-name{font-size:13px;color:#e2e8f0}
@@ -82,8 +85,9 @@ canvas{display:block}
 .recipe.locked{opacity:0.4}
 .recipe-name{font-size:14px;color:#fbbf24;margin-bottom:4px}
 .recipe-ing{font-size:11px;color:#94a3b8}
-.recipe-btn{margin-top:6px;padding:4px 12px;border-radius:4px;border:1px solid #22c55e;color:#22c55e;background:none;cursor:pointer;font-size:11px}
+.recipe-btn{margin-top:6px;padding:4px 12px;border-radius:4px;border:1px solid #22c55e;color:#22c55e;background:none;cursor:pointer;font-size:11px;transition:all 0.15s}
 .recipe-btn:hover{background:rgba(34,197,94,0.2)}
+.recipe-btn:active{background:#22c55e;color:#1a1a2e;transform:scale(0.93);transition:all 0.05s}
 .recipe-btn:disabled{opacity:0.3;cursor:not-allowed}
 #glide-ind{position:fixed;bottom:50px;left:50%;transform:translateX(-50%);z-index:10;display:none;pointer-events:none;color:#88ccff;font-size:14px;text-shadow:0 0 10px #4488ff}
 #minimap{position:fixed;bottom:12px;right:12px;z-index:12;pointer-events:none;border-radius:10px;border:2px solid rgba(74,222,128,0.35);box-shadow:0 2px 16px rgba(0,0,0,0.5);display:none}
@@ -1227,16 +1231,20 @@ function renderNPCTab(){
     }
   }
 }
+function flashBuyFeedback(msg){
+  const fb=document.createElement('div');fb.style.cssText='position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);z-index:60;color:#ffd700;font-size:20px;font-weight:bold;text-shadow:0 0 15px rgba(251,191,36,0.8);pointer-events:none;animation:nIn 0.2s ease-out,nOut 0.5s ease-in 0.8s forwards';
+  fb.textContent=msg;document.body.appendChild(fb);setTimeout(()=>fb.remove(),1500);
+}
 function buyFromNPC(idx){
   const def=NPC_DEFS[activeNPC];const item=def.sells[idx];
   if(gold<item.price)return;
   gold-=item.price;
-  if(item.resource){inv[item.resource]=(inv[item.resource]||0)+1;notify('Bought '+item.name+'!')}
-  if(item.recipeId){const r=RECIPES.find(x=>x.id===item.recipeId);if(r)r.known=true;notify('Learned recipe: '+item.name+'!','epic');saveGame()}
-  if(item.upgrade){upgrades[item.upgrade]=true;notify('Purchased: '+item.name+'!','epic');saveGame()}
+  if(item.resource){inv[item.resource]=(inv[item.resource]||0)+1;notify('Bought '+item.name+'!');flashBuyFeedback('-'+item.price+'g  +1 '+item.name)}
+  if(item.recipeId){const r=RECIPES.find(x=>x.id===item.recipeId);if(r)r.known=true;notify('Learned recipe: '+item.name+'!','epic');flashBuyFeedback('Learned: '+item.name+'!');saveGame()}
+  if(item.upgrade){upgrades[item.upgrade]=true;notify('Purchased: '+item.name+'!','epic');flashBuyFeedback(item.name+' Unlocked!');saveGame()}
   renderNPCTab();
 }
-function sellToNPC(res,price){if(inv[res]<=0)return;inv[res]--;gold+=price;notify('+'+price+' gold');renderNPCTab()}
+function sellToNPC(res,price){if(inv[res]<=0)return;inv[res]--;gold+=price;notify('+'+price+' gold');flashBuyFeedback('+'+price+'g');renderNPCTab()}
 function acceptQuest(npcId){const def=NPC_DEFS[npcId];const st=npcState[npcId];def.quests[st.questIndex]._accepted=true;notify('Quest accepted: '+def.quests[st.questIndex].title);renderNPCTab()}
 function completeQuest(npcId){
   const def=NPC_DEFS[npcId];const st=npcState[npcId];const q=def.quests[st.questIndex];
