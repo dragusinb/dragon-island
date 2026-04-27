@@ -280,7 +280,7 @@ const NPC_DEFS = {
     quests:[
       {title:'Feed Coral Bay',give:"Our people are hungry. Bring 8 berries to feed the village.",active:"We still need berries! Search the bushes on our shores.",complete:"The village is fed! Thank you, friend.",check:()=>inv.berry>=8,onComplete:()=>{inv.berry-=8;gold+=30}},
       {title:'Lighthouse Restoration',give:"Bring 12 iron and 8 stone to repair our lighthouse!",active:"We need iron and stone. Mine them from rock formations!",complete:"The lighthouse shines again! Ships can find safe harbor!",check:()=>inv.iron>=12&&inv.stone>=8,onComplete:()=>{inv.iron-=12;inv.stone-=8;gold+=60;mendBuilding('lighthouse')}},
-      {title:'Lost Compass',give:"My grandfather's compass was lost on the eastern cliffs. Find it for me?",active:"Search the eastern shore of Coral Bay for the glowing compass.",complete:"You found it! This compass guided ships for generations. Thank you!",check:()=>foundArtefacts.has('compass'),onComplete:()=>{foundArtefacts.delete('compass');gold+=45}},
+      {title:'Lost Compass',give:"My grandfather's compass was lost on the eastern cliffs. Find it for me?",active:"Search the eastern shore of Coral Bay for the glowing compass.",complete:"You found it! This compass guided ships for generations. Thank you!",check:()=>foundArtefacts.has('compass'),onComplete:()=>{gold+=45}},
     ]
   },
   gorrick: {
@@ -295,7 +295,7 @@ const NPC_DEFS = {
     favGift:'crystal',
     quests:[
       {title:'Shore Up the Mine',give:"Bring 15 stone and 5 iron to shore up the mine entrance!",active:"We need stone and iron to rebuild. Keep mining!",complete:"The mine is reopened! The mountain's riches flow again!",check:()=>inv.stone>=15&&inv.iron>=5,onComplete:()=>{inv.stone-=15;inv.iron-=5;gold+=55;mendBuilding('mine')}},
-      {title:'Ancient Hammer',give:"Our founder's hammer is lost in the high crags. Find it to restore our craft!",active:"Search the mountain peaks of Ironridge for the ancient hammer.",complete:"The hammer returns! Our forge burns bright once more!",check:()=>foundArtefacts.has('hammer'),onComplete:()=>{foundArtefacts.delete('hammer');gold+=60}},
+      {title:'Ancient Hammer',give:"Our founder's hammer is lost in the high crags. Find it to restore our craft!",active:"Search the mountain peaks of Ironridge for the ancient hammer.",complete:"The hammer returns! Our forge burns bright once more!",check:()=>foundArtefacts.has('hammer'),onComplete:()=>{gold+=60}},
     ]
   },
   sylva: {
@@ -311,7 +311,7 @@ const NPC_DEFS = {
     quests:[
       {title:'Restore the Grove',give:"Bring 10 herbs and 6 mushrooms to nourish the dying grove.",active:"Gather herbs and mushrooms from the forest floors.",complete:"The grove blooms again! Feel the forest breathe with life!",check:()=>inv.herb>=10&&inv.mushroom>=6,onComplete:()=>{inv.herb-=10;inv.mushroom-=6;gold+=50;mendBuilding('grove')}},
       {title:'Mend the Shrine',give:"Bring 10 stone and 8 crystal to rebuild the ancient forest shrine.",active:"We need stone and crystal. Check the mountain island for crystals!",complete:"The shrine stands restored! The forest spirits rejoice!",check:()=>inv.stone>=10&&inv.crystal>=8,onComplete:()=>{inv.stone-=10;inv.crystal-=8;gold+=70;mendBuilding('shrine')}},
-      {title:'Nature Crystal',give:"The crystal that channels forest energy is hidden in the deep woods. Find it!",active:"Search deep in the Mosswood forest for the glowing nature crystal.",complete:"The crystal pulses with life! The forest is whole once more!",check:()=>foundArtefacts.has('crystal'),onComplete:()=>{foundArtefacts.delete('crystal');gold+=80}},
+      {title:'Nature Crystal',give:"The crystal that channels forest energy is hidden in the deep woods. Find it!",active:"Search deep in the Mosswood forest for the glowing nature crystal.",complete:"The crystal pulses with life! The forest is whole once more!",check:()=>foundArtefacts.has('crystal'),onComplete:()=>{gold+=80}},
     ]
   },
 };
@@ -370,7 +370,7 @@ function saveGame(){
     fog:btoa(String.fromCharCode(...fogGrid)),
     farms:farmPlots.map(p=>({state:p.state,cropType:p.cropType,growTimer:p.growTimer})),
   };
-  for(const[id,st] of Object.entries(npcState))data.quests[id]={qi:st.questIndex,fr:st.friendship};
+  for(const[id,st] of Object.entries(npcState)){const def=NPC_DEFS[id];data.quests[id]={qi:st.questIndex,fr:st.friendship,acc:st.questIndex<def.quests.length&&!!def.quests[st.questIndex]._accepted}}
   RECIPES.forEach((r,i)=>{if(r.known)data.recipes.push(i)});
   try{localStorage.setItem(SAVE_KEY,JSON.stringify(data));return true}catch(e){return false}
 }
@@ -390,7 +390,7 @@ function loadGame(){
     // Quests
     for(const[id,st] of Object.entries(d.quests)){if(npcState[id]){npcState[id].questIndex=st.qi;npcState[id].friendship=st.fr||0;
       const def=NPC_DEFS[id];for(let i=0;i<st.qi&&i<def.quests.length;i++)def.quests[i]._accepted=true;
-      if(st.qi<def.quests.length)def.quests[st.qi]._accepted=true;}}
+      if(st.qi<def.quests.length&&st.acc)def.quests[st.qi]._accepted=true;}}
     // Recipes
     if(d.recipes)d.recipes.forEach(i=>{if(RECIPES[i])RECIPES[i].known=true});
     // Upgrades
@@ -881,7 +881,6 @@ function createResourceNode(wx, wz, config) {
   config.build(g);
   g.position.set(wx, h, wz);
   scene.add(g);
-  const yieldAmt = config.amount + (upgrades.pickaxe && config.category==='mine' ? 1 : 0);
   const obj = {
     type:config.type, group:g, x:wx, z:wz, hasItems:true, respawnTimer:0, visuals:config.visuals?config.visuals(g):[],
     interact(){
@@ -889,6 +888,7 @@ function createResourceNode(wx, wz, config) {
       this.hasItems = false;
       this.visuals.forEach(v => v.visible = false);
       this.respawnTimer = CFG.RESPAWN_TIME;
+      const yieldAmt = config.amount + (upgrades.pickaxe && config.category==='mine' ? 1 : 0);
       inv[config.resource] += yieldAmt;
       spawnParticles(new THREE.Vector3(wx,h+config.pHeight,wz), config.pColor, 8, 2, 3, 1, 0.1);
       notify('+'+yieldAmt+' '+config.name+'!');
@@ -1153,15 +1153,15 @@ function renderNPCTab(){
   const body=document.getElementById('npc-body');
   const def=NPC_DEFS[activeNPC];const st=npcState[activeNPC];
   if(currentNPCTab==='chat'){
-    body.innerHTML='<div class="npc-chat">'+def.greeting+'</div>';
-    // Feed dragon buttons
+    let html='<div class="npc-chat">'+def.greeting+'</div>';
     if(inv.berryPie>0||inv.herbStew>0||inv.dragonFeast>0){
-      body.innerHTML+='<div style="margin-top:12px;border-top:1px solid rgba(255,255,255,0.1);padding-top:8px"><div class="sec-label">Feed Dragon Cooked Food</div>';
+      html+='<div style="margin-top:12px;border-top:1px solid rgba(255,255,255,0.1);padding-top:8px"><div class="sec-label">Feed Dragon Cooked Food</div>';
       ['berryPie','herbStew','dragonFeast'].forEach(id=>{
-        if(inv[id]>0){const r=RECIPES.find(x=>x.id===id);body.innerHTML+='<div class="shop-item"><div class="shop-info"><div class="shop-name">'+r.name+' (have '+inv[id]+')</div><div class="shop-desc">+'+r.xp+' dragon XP</div></div><button class="shop-buy" onclick="feedDragonCooked(\''+id+'\');renderNPCTab()">Feed</button></div>'}
+        if(inv[id]>0){const r=RECIPES.find(x=>x.id===id);html+='<div class="shop-item"><div class="shop-info"><div class="shop-name">'+r.name+' (have '+inv[id]+')</div><div class="shop-desc">+'+r.xp+' dragon XP</div></div><button class="shop-buy" onclick="feedDragonCooked(\''+id+'\');renderNPCTab()">Feed</button></div>'}
       });
-      body.innerHTML+='</div>';
+      html+='</div>';
     }
+    body.innerHTML=html;
   } else if(currentNPCTab==='buy'){
     let html='<div class="sec-label">For Sale</div>';
     def.sells.forEach((item,i)=>{
@@ -1182,8 +1182,7 @@ function renderNPCTab(){
     const qi=st.questIndex;
     if(qi>=def.quests.length){body.innerHTML='<div class="npc-chat">Thank you for everything, hero! All tasks complete.</div>';return}
     const q=def.quests[qi];
-    const isActive=true;
-    if(q.check()){
+    if(q._accepted&&q.check()){
       body.innerHTML='<div class="npc-chat">'+q.complete+'</div><button class="recipe-btn" onclick="completeQuest(\''+activeNPC+'\')">Complete Quest</button>';
     } else {
       const isNew = !q._accepted;
@@ -1196,7 +1195,7 @@ function buyFromNPC(idx){
   const def=NPC_DEFS[activeNPC];const item=def.sells[idx];
   if(gold<item.price)return;
   gold-=item.price;
-  if(item.resource)inv[item.resource]=(inv[item.resource]||0)+1;
+  if(item.resource){inv[item.resource]=(inv[item.resource]||0)+1;notify('Bought '+item.name+'!')}
   if(item.recipeId){const r=RECIPES.find(x=>x.id===item.recipeId);if(r)r.known=true;notify('Learned recipe: '+item.name+'!','epic');saveGame()}
   if(item.upgrade){upgrades[item.upgrade]=true;notify('Purchased: '+item.name+'!','epic');saveGame()}
   renderNPCTab();
@@ -1238,10 +1237,15 @@ function cookItem(idx){
 // ===== MOUNT/DISMOUNT =====
 function mountDragon(){if(dragon.stage!=='adult')return;isRiding=true;playerGroup.visible=false;notify('Mounted! SPACE=up, SHIFT=down')}
 function dismountDragon(){
-  isRiding=false;isFlying=false;
-  const off=new THREE.Vector3(3,0,0).applyAxisAngle(new THREE.Vector3(0,1,0),dragonGroup.rotation.y);
-  playerPos.copy(dragonGroup.position).add(off);
-  playerPos.y=Math.max(getTerrainHeight(playerPos.x,playerPos.z),playerPos.y);
+  isRiding=false;isFlying=false;isGliding=false;
+  let placed=false;
+  for(let a=0;a<Math.PI*2;a+=Math.PI/4){
+    const off=new THREE.Vector3(3,0,0).applyAxisAngle(new THREE.Vector3(0,1,0),dragonGroup.rotation.y+a);
+    const tp=dragonGroup.position.clone().add(off);
+    const th=getTerrainHeight(tp.x,tp.z);
+    if(th>=CFG.WATER_LEVEL){playerPos.set(tp.x,Math.max(th,tp.y),tp.z);placed=true;break}
+  }
+  if(!placed){playerPos.copy(dragonGroup.position);playerPos.y=Math.max(getTerrainHeight(playerPos.x,playerPos.z),dragonGroup.position.y)}
   playerGroup.position.copy(playerPos);playerGroup.visible=true;notify('Dismounted');
 }
 
@@ -1297,9 +1301,6 @@ function getActiveQuest(){
   for(const[id,def] of Object.entries(NPC_DEFS)){
     const qi=npcState[id].questIndex;if(qi<def.quests.length){const q=def.quests[qi];if(q._accepted)return{npcId:id,def,quest:q,qi}}
   }
-  for(const[id,def] of Object.entries(NPC_DEFS)){
-    const qi=npcState[id].questIndex;if(qi<def.quests.length)return{npcId:id,def,quest:def.quests[qi],qi,notAccepted:true}
-  }
   return null;
 }
 function getQuestTarget(aq){
@@ -1310,7 +1311,7 @@ function getQuestTarget(aq){
   if(aq.notAccepted)return{x:npc.x,z:npc.z,label:'Talk to '+aq.def.name};
   if(title.includes('compass')){const a=interactables.find(o=>o.type==='artefact'&&o.id==='compass'&&!o.collected);if(a)return{x:a.x,z:a.z,label:'Find compass'};return{x:npc.x,z:npc.z,label:'Return'}}
   if(title.includes('hammer')){const a=interactables.find(o=>o.type==='artefact'&&o.id==='hammer'&&!o.collected);if(a)return{x:a.x,z:a.z,label:'Find hammer'};return{x:npc.x,z:npc.z,label:'Return'}}
-  if(title.includes('nature crystal')||title.includes('crystal')&&aq.npcId==='sylva'){const a=interactables.find(o=>o.type==='artefact'&&o.id==='crystal'&&!o.collected);if(a)return{x:a.x,z:a.z,label:'Find crystal'};return{x:npc.x,z:npc.z,label:'Return'}}
+  if(title.includes('nature crystal')||(title.includes('crystal')&&aq.npcId==='sylva')){const a=interactables.find(o=>o.type==='artefact'&&o.id==='crystal'&&!o.collected);if(a)return{x:a.x,z:a.z,label:'Find crystal'};return{x:npc.x,z:npc.z,label:'Return'}}
   const isl=ISLANDS.find(i=>i.id===aq.def.island);if(isl)return{x:isl.cx,z:isl.cz,label:isl.name};
   return{x:npc.x,z:npc.z,label:aq.def.name};
 }
@@ -1342,7 +1343,7 @@ function drawMinimap(){
   const cv=document.getElementById('minimap');if(!cv)return;
   const ctx=cv.getContext('2d');const W=cv.width,H=cv.height;
   const px=isRiding?dragonGroup.position.x:playerPos.x,pz=isRiding?dragonGroup.position.z:playerPos.z;
-  const mapRange=1600,scale=W/mapRange;
+  const mapRange=3000,scale=W/mapRange;
   ctx.clearRect(0,0,W,H);
   // Background (ocean)
   ctx.fillStyle='#0a2a4a';ctx.beginPath();ctx.arc(W/2,H/2,W/2,0,Math.PI*2);ctx.fill();ctx.save();ctx.beginPath();ctx.arc(W/2,H/2,W/2,0,Math.PI*2);ctx.clip();
@@ -1442,7 +1443,9 @@ function updatePlayer(dt){
     playerPos.y+=playerVelY*dt;
     const th=getTerrainHeight(playerPos.x,playerPos.z);
     const minH=Math.max(th,CFG.WATER_LEVEL);
-    if(playerPos.y<=minH+0.2){playerPos.y=Math.max(minH,playerPos.y);playerVelY=0;isGrounded=playerPos.y<=th+0.3;isGliding=false}
+    if(playerPos.y<=minH+0.2){playerVelY=0;isGliding=false;
+      if(th>=CFG.WATER_LEVEL){playerPos.y=th;isGrounded=true}
+      else{playerPos.x=prevX;playerPos.z=prevZ;playerPos.y=getTerrainHeight(prevX,prevZ);isGrounded=true}}
     const dc=Math.sqrt(playerPos.x**2+playerPos.z**2);if(dc>1800){playerPos.x*=1800/dc;playerPos.z*=1800/dc;isGliding=false}
   } else{
     const th=getTerrainHeight(playerPos.x,playerPos.z);
@@ -1499,7 +1502,7 @@ function updateDragon(dt){
   if(dragon.autoHelpCooldown>0)dragon.autoHelpCooldown-=dt;if(dragon.breathTimer>0)dragon.breathTimer-=dt;
   const baseSpd=dragon.stage==='adult'?16:dragon.stage==='teen'?12:9;
   const followD=dragon.befriended?(dragon.stage==='adult'?6:dragon.stage==='teen'?4:3):8;
-  if(distP>50){const a=Math.random()*Math.PI*2;dragon.pos.x=playerPos.x+Math.cos(a)*5;dragon.pos.z=playerPos.z+Math.sin(a)*5}
+  if(distP>50){let a=Math.random()*Math.PI*2;for(let i=0;i<8;i++){const tx=playerPos.x+Math.cos(a)*5,tz=playerPos.z+Math.sin(a)*5;if(getTerrainHeight(tx,tz)>CFG.WATER_LEVEL+0.5){dragon.pos.x=tx;dragon.pos.z=tz;break}a+=Math.PI/4}}
   // Nap
   if(dragon.stage==='kid'&&!dragon.befriended){dragon.napTimer-=dt;if(dragon.napTimer<=0&&!dragon.isNapping&&distP>15&&Math.random()<0.3){dragon.isNapping=true;dragon.napTimer=6+Math.random()*4}if(dragon.isNapping){dragon.napTimer-=dt;if(dragon.napTimer<=0||distP<8)dragon.isNapping=false}}else dragon.isNapping=false;
   // Curiosity
@@ -1519,7 +1522,9 @@ function updateDragon(dt){
   else if(dragon.curiosityTarget&&dragon.sniffTimer>0){dragon.sniffTimer-=dt;const d=dragonMoveTo(dragon.curiosityTarget.x,dragon.curiosityTarget.z,baseSpd*0.7,dt);isMoving=d>2;if(d<3&&Math.random()<0.15){spawnParticles(getDragonSnout(),0xcccccc,1,0.3,1,0.5,0.04)}if(dragon.sniffTimer<=0)dragon.curiosityTarget=null}
   else if(dragon.isNapping){isMoving=false}
   else if(distP>followD){dragonMoveTo(playerPos.x,playerPos.z,distP>20?baseSpd*1.6:baseSpd,dt);isMoving=true}
-  else{dragon.playTimer-=dt;if(dragon.playTimer<=0){dragon.playTimer=1.5+Math.random()*3;const a=Math.random()*Math.PI*2,r=2+Math.random()*(followD-1);dragon.targetPos.set(playerPos.x+Math.cos(a)*r,0,playerPos.z+Math.sin(a)*r)}const d=dragonMoveTo(dragon.targetPos.x,dragon.targetPos.z,baseSpd*0.4,dt);isMoving=d>1;if(!isMoving)dragonFaceDir(dx,dz,dt,2)}
+  else{dragon.playTimer-=dt;if(dragon.playTimer<=0){dragon.playTimer=1.5+Math.random()*3;const a=Math.random()*Math.PI*2,r=followD+1+Math.random()*3;dragon.targetPos.set(playerPos.x+Math.cos(a)*r,0,playerPos.z+Math.sin(a)*r)}const d=dragonMoveTo(dragon.targetPos.x,dragon.targetPos.z,baseSpd*0.4,dt);isMoving=d>1;if(!isMoving)dragonFaceDir(dx,dz,dt,2)}
+  // Push dragon away if too close
+  if(distP<followD*0.6&&distP>0.1&&!dragon.helpTask){const push=followD*0.6-distP;dragon.pos.x-=(dx/distP)*push;dragon.pos.z-=(dz/distP)*push}
   // Auto crop tend
   if(dragon.befriended&&dragon.autoHelpCooldown<=0&&!dragon.helpTask){interactables.forEach(obj=>{if(obj.type==='farm_plot'&&obj.state==='growing'){const d=Math.sqrt((dragon.pos.x-obj.x)**2+(dragon.pos.z-obj.z)**2);if(d<10){obj.growTimer=Math.max(0,obj.growTimer-(dragon.stage==='adult'?3:dragon.stage==='teen'?2:0.5)*dt)}}})}
   // Position
@@ -1574,6 +1579,7 @@ function updateWorld(dt){
 // ===== CONTROLS =====
 function setupControls(){
   document.addEventListener('keydown',e=>{
+    if(e.key==='Escape'&&menuOpen){if(document.getElementById('npc-menu').style.display==='flex')closeNPCMenu();else if(document.getElementById('cook-menu').style.display==='flex')closeCookMenu();return}
     if(menuOpen)return;
     keys[e.key.toLowerCase()]=true;
     if(e.key.toLowerCase()==='e'&&gameStarted){const t=findNearestInteractable();if(t)t.interact()}
@@ -1584,6 +1590,8 @@ function setupControls(){
   document.addEventListener('mousemove',e=>{if(document.pointerLockElement===renderer.domElement&&!menuOpen){cameraYaw-=e.movementX*CFG.CAM_SENSITIVITY;cameraPitch+=e.movementY*CFG.CAM_SENSITIVITY}});
   renderer.domElement.addEventListener('click',()=>{if(!gameStarted||menuOpen)return;if(document.pointerLockElement!==renderer.domElement)renderer.domElement.requestPointerLock()});
   window.addEventListener('resize',()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight)});
+  window.addEventListener('blur',()=>{for(const k in keys)keys[k]=false});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)for(const k in keys)keys[k]=false});
 }
 
 // ===== GAME LOOP =====
