@@ -86,6 +86,13 @@ canvas{display:block}
 .recipe-btn:hover{background:rgba(34,197,94,0.2)}
 .recipe-btn:disabled{opacity:0.3;cursor:not-allowed}
 #glide-ind{position:fixed;bottom:50px;left:50%;transform:translateX(-50%);z-index:10;display:none;pointer-events:none;color:#88ccff;font-size:14px;text-shadow:0 0 10px #4488ff}
+#minimap{position:fixed;bottom:12px;right:12px;z-index:12;pointer-events:none;border-radius:10px;border:2px solid rgba(74,222,128,0.35);box-shadow:0 2px 16px rgba(0,0,0,0.5);display:none}
+#quest-detail{position:fixed;bottom:12px;left:12px;z-index:12;pointer-events:none;display:none;background:rgba(0,0,0,0.65);backdrop-filter:blur(8px);border:1px solid rgba(168,85,247,0.3);border-radius:10px;padding:10px 14px;color:#e2e8f0;font-size:12px;max-width:240px}
+#quest-detail h3{color:#a855f7;font-size:10px;letter-spacing:1px;margin-bottom:4px}
+#qd-title{color:#c4b5fd;font-weight:bold;font-size:13px;margin-bottom:3px}
+#qd-npc{color:#94a3b8;font-size:10px;margin-bottom:4px}
+#qd-desc{color:#d4d4d8;line-height:1.4;font-size:11px}
+#qd-hint{color:#fbbf24;font-size:10px;margin-top:5px;font-style:italic}
 </style>
 </head>
 <body>
@@ -115,7 +122,7 @@ canvas{display:block}
   <button id="start-btn" onclick="startGame()">Begin Your Journey</button>
   <div class="ctrls">
     <span>WASD</span> Move &bull; <span>Mouse</span> Look &bull; <span>E</span> Interact &bull; <span>Space</span> Jump / Fly Up<br>
-    <span>Shift</span> Fly Down &bull; <span>F</span> Dragon Help &bull; <span>Q</span> Quest Log &bull; <span>Double-Space</span> Glide
+    <span>Shift</span> Fly Down &bull; <span>F</span> Dragon Help &bull; <span>Double-Space</span> Glide (Space again to stop)
   </div>
 </div>
 <div id="hud">
@@ -157,6 +164,8 @@ canvas{display:block}
 <div id="crosshair"></div>
 <div id="island-name"></div>
 <div id="glide-ind">~ Gliding ~</div>
+<canvas id="minimap" width="180" height="180"></canvas>
+<div id="quest-detail"><h3>ACTIVE QUEST</h3><div id="qd-title"></div><div id="qd-npc"></div><div id="qd-desc"></div><div id="qd-hint"></div></div>
 <div id="npc-menu"><div class="npc-box">
   <div class="npc-hdr"><h2 id="npc-title">NPC</h2><button class="npc-close" onclick="closeNPCMenu()">Close</button></div>
   <div class="npc-tabs">
@@ -341,6 +350,10 @@ let activeNPC = null;
 let menuOpen = false;
 const upgrades = { storage:false, pickaxe:false, garden:false, glide:false };
 const particles = [];
+// Fog of war grid (covers -1500 to 1500 in 30-unit cells = 100x100)
+const FOG_SIZE=100,FOG_CELL=30,FOG_OFFSET=1500;
+const fogGrid=new Uint8Array(FOG_SIZE*FOG_SIZE);
+let minimapTimer=0;
 
 // ===== PARTICLE SYSTEM =====
 function spawnParticles(pos, color, count, spread, speed, life, size) {
@@ -1209,6 +1222,126 @@ function updateUI(){
   if(currentPrompt){pe.style.display='block';document.getElementById('prompt-text').textContent=currentPrompt}else pe.style.display='none';
   // Glide
   document.getElementById('glide-ind').style.display=isGliding?'block':'none';
+  // Quest detail panel
+  updateQuestDetail();
+}
+
+// ===== QUEST DETAIL =====
+function getActiveQuest(){
+  for(const[id,def] of Object.entries(NPC_DEFS)){
+    const qi=npcState[id].questIndex;if(qi<def.quests.length){const q=def.quests[qi];if(q._accepted)return{npcId:id,def,quest:q,qi}}
+  }
+  for(const[id,def] of Object.entries(NPC_DEFS)){
+    const qi=npcState[id].questIndex;if(qi<def.quests.length)return{npcId:id,def,quest:def.quests[qi],qi,notAccepted:true}
+  }
+  return null;
+}
+function getQuestTarget(aq){
+  if(!aq)return null;
+  const npc=npcs[aq.npcId];if(!npc)return null;
+  const q=aq.quest,title=q.title.toLowerCase();
+  if(q.check&&q.check())return{x:npc.x,z:npc.z,label:'Return to '+aq.def.name};
+  if(aq.notAccepted)return{x:npc.x,z:npc.z,label:'Talk to '+aq.def.name};
+  if(title.includes('compass')){const a=interactables.find(o=>o.type==='artefact'&&o.id==='compass'&&!o.collected);if(a)return{x:a.x,z:a.z,label:'Find compass'};return{x:npc.x,z:npc.z,label:'Return'}}
+  if(title.includes('hammer')){const a=interactables.find(o=>o.type==='artefact'&&o.id==='hammer'&&!o.collected);if(a)return{x:a.x,z:a.z,label:'Find hammer'};return{x:npc.x,z:npc.z,label:'Return'}}
+  if(title.includes('nature crystal')||title.includes('crystal')&&aq.npcId==='sylva'){const a=interactables.find(o=>o.type==='artefact'&&o.id==='crystal'&&!o.collected);if(a)return{x:a.x,z:a.z,label:'Find crystal'};return{x:npc.x,z:npc.z,label:'Return'}}
+  const isl=ISLANDS.find(i=>i.id===aq.def.island);if(isl)return{x:isl.cx,z:isl.cz,label:isl.name};
+  return{x:npc.x,z:npc.z,label:aq.def.name};
+}
+function updateQuestDetail(){
+  const panel=document.getElementById('quest-detail');
+  const aq=getActiveQuest();
+  if(!aq){panel.style.display='none';return}
+  panel.style.display='block';
+  document.getElementById('qd-title').textContent=aq.quest.title;
+  document.getElementById('qd-npc').textContent=(aq.notAccepted?'New quest from ':'Quest from ')+aq.def.name;
+  document.getElementById('qd-desc').textContent=aq.notAccepted?'Go talk to '+aq.def.name+' to learn more.':(aq.quest.check&&aq.quest.check()?aq.quest.complete.split('.')[0]+'. Return to '+aq.def.name+'!':aq.quest.active);
+  const tgt=getQuestTarget(aq);
+  if(tgt){const px=isRiding?dragonGroup.position.x:playerPos.x,pz=isRiding?dragonGroup.position.z:playerPos.z;
+    const dist=Math.round(Math.sqrt((px-tgt.x)**2+(pz-tgt.z)**2));
+    document.getElementById('qd-hint').textContent=tgt.label+' ('+dist+'m '+(dist>100&&dragon.stage!=='adult'?'- need flight!':dist>30?'- follow marker':'- nearby!')+')'}
+  else document.getElementById('qd-hint').textContent='';
+}
+
+// ===== MINIMAP =====
+function revealFog(wx,wz,radius){
+  const cr=Math.ceil(radius/FOG_CELL);
+  const cx=Math.floor((wx+FOG_OFFSET)/FOG_CELL),cz=Math.floor((wz+FOG_OFFSET)/FOG_CELL);
+  for(let dx=-cr;dx<=cr;dx++)for(let dz=-cr;dz<=cr;dz++){
+    const gx=cx+dx,gz=cz+dz;
+    if(gx>=0&&gx<FOG_SIZE&&gz>=0&&gz<FOG_SIZE&&dx*dx+dz*dz<=cr*cr)fogGrid[gz*FOG_SIZE+gx]=1;
+  }
+}
+function drawMinimap(){
+  const cv=document.getElementById('minimap');if(!cv)return;
+  const ctx=cv.getContext('2d');const W=cv.width,H=cv.height;
+  const px=isRiding?dragonGroup.position.x:playerPos.x,pz=isRiding?dragonGroup.position.z:playerPos.z;
+  const mapRange=1600,scale=W/mapRange;
+  ctx.clearRect(0,0,W,H);
+  // Background (ocean)
+  ctx.fillStyle='#0a2a4a';ctx.beginPath();ctx.arc(W/2,H/2,W/2,0,Math.PI*2);ctx.fill();ctx.save();ctx.beginPath();ctx.arc(W/2,H/2,W/2,0,Math.PI*2);ctx.clip();
+  // Islands
+  ISLANDS.forEach(isl=>{
+    const ix=(isl.cx+mapRange/2)*scale,iz=(isl.cz+mapRange/2)*scale,ir=isl.radius*scale;
+    const colors={home:'#3a7a4a',coastal:'#c4a86a',mountain:'#7a7a7a',forest:'#2a6a2a'};
+    ctx.fillStyle=colors[isl.theme]||'#4a8a4a';ctx.beginPath();ctx.arc(ix,iz,ir,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.15)';ctx.lineWidth=0.5;ctx.stroke();
+  });
+  // Fog of war overlay
+  for(let gy=0;gy<FOG_SIZE;gy++)for(let gx=0;gx<FOG_SIZE;gx++){
+    if(!fogGrid[gy*FOG_SIZE+gx]){
+      const wx=gx*FOG_CELL-FOG_OFFSET,wz=gy*FOG_CELL-FOG_OFFSET;
+      const sx=(wx+mapRange/2)*scale,sy=(wz+mapRange/2)*scale,ss=FOG_CELL*scale;
+      ctx.fillStyle='rgba(5,15,25,0.82)';ctx.fillRect(sx,sy,ss+0.5,ss+0.5);
+    }
+  }
+  // POIs - NPCs
+  for(const[id,npc] of Object.entries(npcs)){
+    const nx=(npc.x+mapRange/2)*scale,nz=(npc.z+mapRange/2)*scale;
+    const fcx=Math.floor((npc.x+FOG_OFFSET)/FOG_CELL),fcz=Math.floor((npc.z+FOG_OFFSET)/FOG_CELL);
+    if(fcx>=0&&fcx<FOG_SIZE&&fcz>=0&&fcz<FOG_SIZE&&fogGrid[fcz*FOG_SIZE+fcx]){
+      ctx.fillStyle='#ffd700';ctx.beginPath();ctx.arc(nx,nz,3,0,Math.PI*2);ctx.fill();
+    }
+  }
+  // POIs - artefacts
+  interactables.forEach(obj=>{if(obj.type==='artefact'&&!obj.collected){
+    const ax=(obj.x+mapRange/2)*scale,az=(obj.z+mapRange/2)*scale;
+    const fcx=Math.floor((obj.x+FOG_OFFSET)/FOG_CELL),fcz=Math.floor((obj.z+FOG_OFFSET)/FOG_CELL);
+    if(fcx>=0&&fcx<FOG_SIZE&&fcz>=0&&fcz<FOG_SIZE&&fogGrid[fcz*FOG_SIZE+fcx]){
+      ctx.fillStyle='#ff66aa';ctx.beginPath();ctx.arc(ax,az,2.5,0,Math.PI*2);ctx.fill();
+    }
+  }});
+  // POIs - mendable buildings (not yet mended)
+  for(const[bid,obj] of Object.entries(mendableObjs)){
+    if(!mendedBuildings.has(bid)){
+      const bx=(obj.wrapper.position.x+mapRange/2)*scale,bz=(obj.wrapper.position.z+mapRange/2)*scale;
+      const fcx=Math.floor((obj.wrapper.position.x+FOG_OFFSET)/FOG_CELL),fcz=Math.floor((obj.wrapper.position.z+FOG_OFFSET)/FOG_CELL);
+      if(fcx>=0&&fcx<FOG_SIZE&&fcz>=0&&fcz<FOG_SIZE&&fogGrid[fcz*FOG_SIZE+fcx]){
+        ctx.strokeStyle='#ff8844';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(bx,bz,3,0,Math.PI*2);ctx.stroke();
+      }
+    }
+  }
+  // Quest target marker
+  const aq=getActiveQuest();const tgt=getQuestTarget(aq);
+  if(tgt){const tx=(tgt.x+mapRange/2)*scale,tz=(tgt.z+mapRange/2)*scale;
+    const pulse=Math.sin(Date.now()*0.005)*0.3+0.7;
+    ctx.strokeStyle='rgba(168,85,247,'+pulse+')';ctx.lineWidth=2;ctx.beginPath();ctx.arc(tx,tz,6,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle='rgba(168,85,247,0.5)';ctx.beginPath();ctx.arc(tx,tz,2,0,Math.PI*2);ctx.fill();
+  }
+  // Player
+  const ppx=(px+mapRange/2)*scale,ppz=(pz+mapRange/2)*scale;
+  ctx.fillStyle='#4ade80';ctx.beginPath();ctx.arc(ppx,ppz,3.5,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#fff';ctx.lineWidth=1;ctx.stroke();
+  // Player direction arrow
+  const dir=isRiding?dragonGroup.rotation.y:playerGroup.rotation.y;
+  const ax=ppx-Math.sin(dir)*7,az=ppz-Math.cos(dir)*7;
+  ctx.strokeStyle='#4ade80';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(ppx,ppz);ctx.lineTo(ax,az);ctx.stroke();
+  // Dragon (when not riding)
+  if(!isRiding){const dx=(dragon.pos.x+mapRange/2)*scale,dz=(dragon.pos.z+mapRange/2)*scale;
+    ctx.fillStyle='#fbbf24';ctx.beginPath();ctx.arc(dx,dz,2.5,0,Math.PI*2);ctx.fill()}
+  ctx.restore();
+  // Border
+  ctx.strokeStyle='rgba(74,222,128,0.35)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(W/2,H/2,W/2-1,0,Math.PI*2);ctx.stroke();
 }
 
 // ===== INTERACTIONS =====
@@ -1237,10 +1370,17 @@ function updatePlayer(dt){
   const isMoving=moveDir.length()>0.01;
   if(isMoving){moveDir.normalize();const sp=keys['shift']?CFG.PLAYER_RUN_SPEED:CFG.PLAYER_SPEED;playerPos.x+=moveDir.x*sp*dt;playerPos.z+=moveDir.z*sp*dt;playerFacing=Math.atan2(moveDir.x,moveDir.z)}
   // Gliding
-  if(isGliding&&!isGrounded){playerVelY=Math.max(playerVelY,-3);playerPos.x+=forward.x*12*dt;playerPos.z+=forward.z*12*dt;if(isGrounded||keys['shift'])isGliding=false}
-  else{
+  if(isGliding&&!isGrounded){
+    playerVelY=Math.max(playerVelY-4*dt,-3);
+    playerPos.x+=forward.x*14*dt;playerPos.z+=forward.z*14*dt;
+    playerPos.y+=playerVelY*dt;
     const th=getTerrainHeight(playerPos.x,playerPos.z);
-    if(th<CFG.WATER_LEVEL&&!isGliding){playerPos.x=prevX;playerPos.z=prevZ}
+    const minH=Math.max(th,CFG.WATER_LEVEL);
+    if(playerPos.y<=minH+0.2){playerPos.y=Math.max(minH,playerPos.y);playerVelY=0;isGrounded=playerPos.y<=th+0.3;isGliding=false}
+    const dc=Math.sqrt(playerPos.x**2+playerPos.z**2);if(dc>1800){playerPos.x*=1800/dc;playerPos.z*=1800/dc;isGliding=false}
+  } else{
+    const th=getTerrainHeight(playerPos.x,playerPos.z);
+    if(th<CFG.WATER_LEVEL){playerPos.x=prevX;playerPos.z=prevZ}
     if(keys[' ']&&isGrounded){playerVelY=CFG.JUMP_FORCE;isGrounded=false}
     playerVelY-=CFG.GRAVITY*dt;playerPos.y+=playerVelY*dt;
     const terrainH=getTerrainHeight(playerPos.x,playerPos.z);
@@ -1372,7 +1512,7 @@ function setupControls(){
     keys[e.key.toLowerCase()]=true;
     if(e.key.toLowerCase()==='e'&&gameStarted){const t=findNearestInteractable();if(t)t.interact()}
     if(e.key.toLowerCase()==='f'&&gameStarted){if(isRiding&&inv.apple>0){inv.apple--;dragon.xp++;dragon.happyTimer=1;const dp=dragonGroup.position.clone();dp.y+=2;spawnParticles(dp,0xff6688,6,1,3,1.2,0.13);notify('Fed while riding! +1 XP');checkDragonEvolve()}else dragonHelp()}
-    if(e.key===' '&&gameStarted&&!isRiding){const now=Date.now();if(now-lastSpaceTime<350&&!isGrounded&&!isGliding){isGliding=true;playerVelY=-2}lastSpaceTime=now}
+    if(e.key===' '&&gameStarted&&!isRiding){if(isGliding){isGliding=false}else{const now=Date.now();if(now-lastSpaceTime<350&&!isGrounded){isGliding=true;playerVelY=-1.5}lastSpaceTime=now}}
   });
   document.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false});
   document.addEventListener('mousemove',e=>{if(document.pointerLockElement===renderer.domElement&&!menuOpen){cameraYaw-=e.movementX*CFG.CAM_SENSITIVITY;cameraPitch+=e.movementY*CFG.CAM_SENSITIVITY}});
@@ -1388,6 +1528,10 @@ function animate(){
   if(!menuOpen){updatePlayer(dt);updateDragon(dt);updateCamera(dt)}
   updateWorld(dt);
   const target=findNearestInteractable();currentPrompt=target?target.getPrompt():null;
+  // Reveal fog around player
+  const fpx=isRiding?dragonGroup.position.x:playerPos.x,fpz=isRiding?dragonGroup.position.z:playerPos.z;
+  revealFog(fpx,fpz,isRiding?120:50);
+  minimapTimer+=dt;if(minimapTimer>0.15){minimapTimer=0;drawMinimap()}
   updateUI();renderer.render(scene,camera);
 }
 
@@ -1406,6 +1550,9 @@ function startGame(){
   document.getElementById('hud').style.display='block';
   document.getElementById('dragon-panel').style.display='block';
   document.getElementById('crosshair').style.display='block';
+  document.getElementById('minimap').style.display='block';
+  document.getElementById('quest-detail').style.display='block';
+  revealFog(0,0,60);
   gameStarted=true;renderer.domElement.requestPointerLock();
   notify('Welcome! A baby '+SPECIES[selectedSpecies].name+' awaits you!');
   notify('Talk to Elder Maren to begin your quest.');
