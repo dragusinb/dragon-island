@@ -1497,20 +1497,21 @@ function mkBerryBush(x,z){return createResourceNode(x,z,{type:'berry_bush',name:
 function mkHerbPatch(x,z){return createResourceNode(x,z,{type:'herb_patch',name:'Herbs',resource:'herb',amount:2,category:'forage',pColor:0x44cc44,pHeight:0.8,
   build(g){for(let i=0;i<4;i++){const st=new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.03,0.4+Math.random()*0.3,4),makePhong(0x338833));st.position.set((Math.random()-0.5)*1.2,0.2,(Math.random()-0.5)*1.2);g.add(st);
     const lf=new THREE.Mesh(new THREE.SphereGeometry(0.12,5,5),makePhong(0x44aa44));lf.position.set(st.position.x,0.45+Math.random()*0.15,st.position.z);g.add(lf)}},
-  visuals(g){const fg=new THREE.Group();for(let i=0;i<3;i++){const f=new THREE.Mesh(new THREE.SphereGeometry(0.06,4,4),makePhong(0xffcc44));f.position.set((Math.random()-0.5)*0.8,0.5,(Math.random()-0.5)*0.8);fg.add(f)}g.add(fg);return[fg]}})}
+  visuals(g){const fg=new THREE.Group();const fm=makePhong(0xffcc44,{emissive:0xffcc44,emissiveIntensity:0.3});for(let i=0;i<6;i++){const f=new THREE.Mesh(new THREE.SphereGeometry(0.15,5,5),fm);const a=i/6*Math.PI*2;f.position.set(Math.cos(a)*0.7,0.5,Math.sin(a)*0.7);fg.add(f)}g.add(fg);return[fg]}})}
 // Mushroom
 function mkMushroom(x,z){return createResourceNode(x,z,{type:'mushroom',name:'Mushrooms',resource:'mushroom',amount:2,category:'forage',pColor:0xcc8844,pHeight:0.6,
-  build(g){},
+  build(g){const soil=new THREE.Mesh(new THREE.CylinderGeometry(0.6,0.7,0.08,8),makePhong(0x3a2a1a));soil.position.y=0.04;g.add(soil)},
   visuals(g){const mg=new THREE.Group();const cap=makePhong(0xcc6644),stem=makePhong(0xeeddcc);
     for(let i=0;i<3;i++){const s=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.08,0.25,6),stem);s.position.set((i-1)*0.3,0.12,Math.sin(i)*0.2);mg.add(s);
       const c=new THREE.Mesh(new THREE.SphereGeometry(0.15,6,4,0,Math.PI*2,0,Math.PI/2),cap);c.position.set(s.position.x,0.25,s.position.z);c.scale.y=0.5;mg.add(c)}
     g.add(mg);return[mg]}})}
 // Stone
 function mkStone(x,z){return createResourceNode(x,z,{type:'stone_rock',name:'Stone',resource:'stone',amount:3,category:'mine',pColor:0xaaaaaa,pHeight:1,
-  build(g){const rm=makePhong(0x777777,{shininess:10});
+  build(g){const rubble=new THREE.Mesh(new THREE.CylinderGeometry(0.8,1.0,0.15,8),makePhong(0x666666));rubble.position.y=0.07;g.add(rubble)},
+  visuals(g){const rm=makePhong(0x777777,{shininess:10});
     const b=new THREE.Mesh(new THREE.DodecahedronGeometry(1,1),rm);b.scale.set(1+Math.random()*0.3,0.6+Math.random()*0.3,1+Math.random()*0.3);b.castShadow=true;g.add(b);
-    const r2=new THREE.Mesh(new THREE.DodecahedronGeometry(0.5,0),rm);r2.position.set(0.7,0,0.4);g.add(r2)},
-  visuals(g){return[]}})}
+    const r2=new THREE.Mesh(new THREE.DodecahedronGeometry(0.5,0),rm);r2.position.set(0.7,0,0.4);g.add(r2);
+    return[b,r2]}})}
 // Iron
 function mkIron(x,z){return createResourceNode(x,z,{type:'iron_vein',name:'Iron',resource:'iron',amount:2,category:'mine',pColor:0xcc6633,pHeight:1,
   build(g){const rm=makePhong(0x666666);g.add(new THREE.Mesh(new THREE.DodecahedronGeometry(0.9,1),rm)).position.y=0.2},
@@ -1540,6 +1541,7 @@ function mkChoppableTree(x,z){
   const fm=makePhong(0x1a6630);
   const crown=new THREE.Mesh(new THREE.SphereGeometry(2.2,8,8),fm);crown.position.y=5.5;crown.scale.set(1,1.3,1);crown.castShadow=true;g.add(crown);
   const crown2=new THREE.Mesh(new THREE.SphereGeometry(1.5,7,7),makePhong(0x237a3a));crown2.position.set(0.5,6.2,0.4);g.add(crown2);
+  const stump=new THREE.Mesh(new THREE.CylinderGeometry(0.35,0.5,0.5,8),tm);stump.position.y=0.25;stump.userData.isStump=true;g.add(stump);
   g.position.set(x,h,z);scene.add(g);
   g.userData.origY=h;g.userData.shakeTimer=0;
   const obj={type:'choppable_tree',group:g,x,z,hasItems:true,respawnTimer:0,
@@ -1553,7 +1555,7 @@ function mkChoppableTree(x,z){
       spawnParticles(new THREE.Vector3(x,h+5,z),0x2d8a4e,12,3,4,1.5,0.12);
       spawnParticles(new THREE.Vector3(x,h+5,z),0x44cc44,6,2,3,1.2,0.08);
       notify('+'+yieldAmt+' Wood!');
-      this.group.children.forEach(c=>c.visible=false);
+      this.group.children.forEach(c=>{if(!c.userData.isStump)c.visible=false});
     },
     getPrompt(){return this.hasItems?'Chop Tree':null},
     respawn(){this.hasItems=true;this.group.children.forEach(c=>c.visible=true)}
@@ -2540,7 +2542,7 @@ function updateWorld(dt){
   // Choppable tree shake animation
   interactables.forEach(obj=>{if(obj.type==='choppable_tree'&&obj.group.userData.shakeTimer>0){obj.group.userData.shakeTimer-=dt;const st=obj.group.userData.shakeTimer;obj.group.rotation.z=Math.sin(st*30)*0.08*(st/0.6);if(st<=0){obj.group.rotation.z=0}}});
   // Fishing spot ripple + glow animation
-  interactables.forEach(obj=>{if(obj.type==='fishing_spot'){const g=obj.group;if(g.userData.ripples){g.userData.ripples.forEach((r,i)=>{const sc=1+Math.sin(elapsed*2+i*1.5)*0.3;r.scale.set(sc,sc,sc);r.material.opacity=(0.3-i*0.1)*Math.abs(Math.sin(elapsed*1.5+i))})}if(g.userData.ring){g.userData.ring.material.opacity=0.3+Math.sin(elapsed*2)*0.2}if(g.userData.lt){g.userData.lt.intensity=0.25+Math.sin(elapsed*1.8)*0.15}}});
+  interactables.forEach(obj=>{if(obj.type==='fishing_spot'){const g=obj.group;if(obj.hasItems){if(g.userData.ripples){g.userData.ripples.forEach((r,i)=>{r.visible=true;const sc=1+Math.sin(elapsed*2+i*1.5)*0.3;r.scale.set(sc,sc,sc);r.material.opacity=(0.3-i*0.1)*Math.abs(Math.sin(elapsed*1.5+i))})}if(g.userData.ring){g.userData.ring.material.opacity=0.3+Math.sin(elapsed*2)*0.2}if(g.userData.disc){g.userData.disc.material.opacity=0.2}if(g.userData.lt){g.userData.lt.intensity=0.25+Math.sin(elapsed*1.8)*0.15}}else{if(g.userData.ripples){g.userData.ripples.forEach(r=>{r.visible=false})}if(g.userData.ring){g.userData.ring.material.opacity=0.1}if(g.userData.disc){g.userData.disc.material.opacity=0.05}if(g.userData.lt){g.userData.lt.intensity=0}}}});
   updateFishing(dt);
   // Decoration animations (shrine orb spin)
   placedDecos.forEach(d=>{if(d.type==='shrine'&&d.group.userData.orb){d.group.userData.orb.rotation.y=elapsed*1.5;d.group.userData.orb.position.y=1.6+Math.sin(elapsed*1.2)*0.1}});
