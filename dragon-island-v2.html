@@ -836,6 +836,7 @@ let isGrounded = true, isRiding = false, isFlying = false, gameStarted = false;
 let isGliding = false, glideWings = null;
 let walkCycle = 0, dragonAnimCycle = 0;
 let lastSpaceTime = 0;
+let islandNameTimeout = null;
 let currentIsland = null, lastIslandName = '';
 const inv = { apple:0, berry:0, herb:0, mushroom:0, wood:0, fish:0, wheat:0, carrot:0, stone:0, iron:0, crystal:0, berryPie:0, herbStew:0, dragonFeast:0, fishStew:0, wheatSeeds:2, carrotSeeds:0 };
 let gold = 10;
@@ -880,6 +881,23 @@ let ambientLight=null,hemiLight=null,fillLight=null;
 let skyBaseColors=null,starField=null;
 const SAVE_KEY='dragonIsland_save';
 
+// ===== PRE-ALLOCATED REUSABLE TEMPORARIES (avoid per-frame GC) =====
+const _tv1=new THREE.Vector3(), _tv2=new THREE.Vector3(), _tv3=new THREE.Vector3(), _tv4=new THREE.Vector3();
+const _tc1=new THREE.Color(), _tc2=new THREE.Color(), _tc3=new THREE.Color(), _tc4=new THREE.Color();
+
+// Pre-allocated color constants for updateDayNight (eliminates ~30 Color allocs/frame)
+const DN_SUN_A=new THREE.Color(0xff9944), DN_SUN_B=new THREE.Color(0xfff8e0), DN_SUN_C=new THREE.Color(0x223355);
+const DN_SUNVIS_A=new THREE.Color(0xff6633), DN_SUNVIS_B=new THREE.Color(0xffffdd);
+const DN_HEMI_SKY_A=new THREE.Color(0x112244), DN_HEMI_SKY_B=new THREE.Color(0x99ccff);
+const DN_HEMI_GND_A=new THREE.Color(0x111122), DN_HEMI_GND_B=new THREE.Color(0x557744);
+const DN_SKY_DAY_L=new THREE.Color(0xffe0b0), DN_SKY_DAY_M=new THREE.Color(0x99ccee), DN_SKY_DAY_H=new THREE.Color(0x2244aa);
+const DN_SKY_DAWN_L=new THREE.Color(0xff7744), DN_SKY_DAWN_M=new THREE.Color(0xffaa66), DN_SKY_DAWN_H=new THREE.Color(0x5566aa);
+const DN_SKY_DUSK_L=new THREE.Color(0xcc4455), DN_SKY_DUSK_M=new THREE.Color(0x8844aa), DN_SKY_DUSK_H=new THREE.Color(0x332266);
+const DN_SKY_NIGHT_L=new THREE.Color(0x0a0a1a), DN_SKY_NIGHT_M=new THREE.Color(0x0b1128), DN_SKY_NIGHT_H=new THREE.Color(0x060818);
+const DN_WATER_NIGHT=new THREE.Color(0x0a1a33), DN_WATER_DAWN=new THREE.Color(0x996655);
+const DN_WATER_DAY=new THREE.Color(0x1a8fcc), DN_WATER_DUSK=new THREE.Color(0x553366);
+const DN_FOG_NIGHT=new THREE.Color(0x0a0f1a), DN_FOG_DAY=new THREE.Color(0x88ccee);
+
 // ===== DECORATION DEFINITIONS =====
 const DECO_DEFS = [
   {id:'bench',name:'Stone Bench',desc:'A place to rest',cost:{stone:3},color:0x999999},
@@ -904,8 +922,8 @@ function saveGame(){
   const data={
     v:2,
     player:{x:playerPos.x,y:playerPos.y,z:playerPos.z,facing:playerFacing},
-    dragon:{species:dragon.species,stage:dragon.stage,xp:dragon.xp,befriended:dragon.befriended,fedCooked:dragon.fedCooked,pos:{x:dragon.pos.x,z:dragon.pos.z},trust:dragon.trust,mood:dragon.mood,coreMemories:{...dragon.coreMemories}},
-    inv:{...inv},gold,
+    dragon:{species:dragon.species,stage:dragon.stage,xp:dragon.xp,befriended:dragon.befriended,fedCooked:dragon.fedCooked,pos:{x:dragon.pos.x,z:dragon.pos.z},trust:dragon.trust,mood:dragon.mood,petCooldown:dragon.petCooldown,moodWeights:{...dragon.moodWeights},coreMemories:{...dragon.coreMemories}},
+    inv:{...inv},gold,dayTime,
     quests:{},recipes:[],upgrades:{...upgrades},
     mended:[...mendedBuildings],artefacts:[...foundArtefacts],
     fog:btoa(String.fromCharCode(...fogGrid)),
@@ -926,11 +944,14 @@ function loadGame(){
     dragon.species=d.dragon.species;dragon.stage=d.dragon.stage;dragon.xp=d.dragon.xp;
     dragon.befriended=d.dragon.befriended;dragon.fedCooked=d.dragon.fedCooked||0;
     dragon.trust=d.dragon.trust||0;dragon.mood=d.dragon.mood||'curious';
+    dragon.petCooldown=d.dragon.petCooldown||0;
+    if(d.dragon.moodWeights){for(const k in d.dragon.moodWeights)dragon.moodWeights[k]=d.dragon.moodWeights[k]}
     if(d.dragon.coreMemories){for(const k in d.dragon.coreMemories)dragon.coreMemories[k]=d.dragon.coreMemories[k]}
     dragon.pos.set(d.dragon.pos.x,0,d.dragon.pos.z);
     // Inventory
     for(const k in d.inv)inv[k]=d.inv[k];
     gold=d.gold||0;
+    if(d.dayTime!==undefined)dayTime=d.dayTime;
     // Quests
     for(const[id,st] of Object.entries(d.quests)){if(npcState[id]){npcState[id].questIndex=st.qi;npcState[id].friendship=st.fr||0;npcState[id].belovedRewardClaimed=!!st.brc;
       const def=NPC_DEFS[id];for(let i=0;i<st.qi&&i<def.quests.length;i++)def.quests[i]._accepted=true;
@@ -1009,7 +1030,7 @@ function updateParticles(dt) {
     p.life -= dt;
     if (p.life <= 0) { scene.remove(p.mesh); p.mesh.geometry.dispose(); p.mesh.material.dispose(); particles.splice(i,1); continue; }
     p.vel.y -= 2*dt;
-    p.mesh.position.add(p.vel.clone().multiplyScalar(dt));
+    p.mesh.position.addScaledVector(p.vel, dt);
     const t = p.life/p.maxLife;
     p.mesh.material.opacity = t;
     p.mesh.scale.setScalar(p.grow ? 1+(1-t)*2 : 0.5+t*0.5);
@@ -1532,6 +1553,7 @@ function mkChoppableTree(x,z){
       spawnParticles(new THREE.Vector3(x,h+5,z),0x2d8a4e,12,3,4,1.5,0.12);
       spawnParticles(new THREE.Vector3(x,h+5,z),0x44cc44,6,2,3,1.2,0.08);
       notify('+'+yieldAmt+' Wood!');
+      this.group.children.forEach(c=>c.visible=false);
     },
     getPrompt(){return this.hasItems?'Chop Tree':null},
     respawn(){this.hasItems=true;this.group.children.forEach(c=>c.visible=true)}
@@ -1539,10 +1561,31 @@ function mkChoppableTree(x,z){
   interactables.push(obj);return obj;
 }
 
+// Pond (small inland water body for fishing)
+function mkPond(cx,cz,pondRadius){
+  pondRadius=pondRadius||10;
+  const h=getTerrainHeight(cx,cz);
+  const waterY=h-0.3;
+  const geo=new THREE.CircleGeometry(pondRadius,32);
+  geo.rotateX(-Math.PI/2);
+  const mat=new THREE.MeshPhongMaterial({color:0x2288aa,transparent:true,opacity:0.6,side:THREE.DoubleSide,shininess:90,emissive:0x114455,emissiveIntensity:0.15});
+  const disc=new THREE.Mesh(geo,mat);
+  disc.position.set(cx,waterY,cz);
+  disc.receiveShadow=true;
+  scene.add(disc);
+  const edgeGeo=new THREE.RingGeometry(pondRadius-0.3,pondRadius+0.5,32);
+  edgeGeo.rotateX(-Math.PI/2);
+  const edgeMat=new THREE.MeshPhongMaterial({color:0x556644,transparent:true,opacity:0.4,side:THREE.DoubleSide});
+  const edge=new THREE.Mesh(edgeGeo,edgeMat);
+  edge.position.set(cx,waterY+0.02,cz);
+  scene.add(edge);
+  return{cx,cz,radius:pondRadius,waterY};
+}
+
 // Fishing Spot
 function mkFishingSpot(x,z){
   const g=new THREE.Group();
-  const h=CFG.WATER_LEVEL;
+  const h=Math.max(getTerrainHeight(x,z)-0.2,CFG.WATER_LEVEL);
   const ringGeo=new THREE.RingGeometry(1.0,1.4,24);
   ringGeo.rotateX(-Math.PI/2);
   const ringMat=new THREE.MeshBasicMaterial({color:0x44aaff,transparent:true,opacity:0.5,side:THREE.DoubleSide});
@@ -1607,7 +1650,7 @@ function catchFish(){
   const amt=1+(Math.random()<0.3?1:0);
   inv.fish+=amt;
   const sp=fishingSpot;
-  const pos=new THREE.Vector3(sp.x,CFG.WATER_LEVEL+1.5,sp.z);
+  const pos=new THREE.Vector3(sp.x,sp.group.position.y+1.5,sp.z);
   spawnParticles(pos,0x66ccff,10,2,5,1.5,0.12);
   spawnParticles(pos,0xaaddff,6,1.5,3,1,0.08);
   const fishGeo=new THREE.ConeGeometry(0.2,0.8,5);
@@ -1858,8 +1901,10 @@ function populateWorld() {
   spawnDragon();
   // Choppable trees - Home
   [[70,60],[-80,40],[50,-70],[-40,-80]].forEach(([x,z])=>mkChoppableTree(x,z));
-  // Fishing spots - Home (near water edges)
-  [[140,10],[-120,-60],[10,130]].forEach(([x,z])=>mkFishingSpot(x,z));
+  // Pond + Fishing spots - Home Island
+  const homePond=mkPond(60,-40,10);
+  mkFishingSpot(60+9,-40);mkFishingSpot(60-9,-40);
+  mkFishingSpot(270,0); // shoreline spot
 
   // Coral Bay
   const cb=ISLANDS[1];
@@ -1874,8 +1919,9 @@ function populateWorld() {
   createArtefact(cb.cx-50, cb.cz+70, 'compass');
   // Choppable trees - Coral Bay
   [[cb.cx+50,cb.cz-20],[cb.cx-40,cb.cz+10],[cb.cx+10,cb.cz+40]].forEach(([x,z])=>mkChoppableTree(x,z));
-  // Fishing spots - Coral Bay
-  [[cb.cx+100,cb.cz+60],[cb.cx-80,cb.cz-50]].forEach(([x,z])=>mkFishingSpot(x,z));
+  // Fishing spots - Coral Bay (shoreline, r*0.8=256)
+  mkFishingSpot(cb.cx+256*Math.cos(0.3),cb.cz+256*Math.sin(0.3));
+  mkFishingSpot(cb.cx+256*Math.cos(3.5),cb.cz+256*Math.sin(3.5));
 
   // Ironridge
   const ir=ISLANDS[2];
@@ -1888,8 +1934,9 @@ function populateWorld() {
   createArtefact(ir.cx+40, ir.cz+60, 'hammer');
   // Choppable trees - Ironridge
   [[ir.cx+30,ir.cz+40],[ir.cx-50,ir.cz+10],[ir.cx+10,ir.cz-50]].forEach(([x,z])=>mkChoppableTree(x,z));
-  // Fishing spots - Ironridge
-  [[ir.cx+90,ir.cz+60],[ir.cx-90,ir.cz-50]].forEach(([x,z])=>mkFishingSpot(x,z));
+  // Fishing spots - Ironridge (shoreline, r*0.8=248)
+  mkFishingSpot(ir.cx+248*Math.cos(0.8),ir.cz+248*Math.sin(0.8));
+  mkFishingSpot(ir.cx+248*Math.cos(4.0),ir.cz+248*Math.sin(4.0));
 
   // Mosswood
   const mw=ISLANDS[3];
@@ -1904,8 +1951,10 @@ function populateWorld() {
   createArtefact(mw.cx+50, mw.cz-50, 'crystal');
   // Choppable trees - Mosswood
   [[mw.cx+30,mw.cz+20],[mw.cx-40,mw.cz+50],[mw.cx+60,mw.cz-40],[mw.cx-20,mw.cz-60]].forEach(([x,z])=>mkChoppableTree(x,z));
-  // Fishing spots - Mosswood
-  [[mw.cx+100,mw.cz+30],[mw.cx-80,mw.cz-40],[mw.cx+20,mw.cz+100]].forEach(([x,z])=>mkFishingSpot(x,z));
+  // Pond + Fishing spots - Mosswood
+  const mwPond=mkPond(mw.cx-30,mw.cz+30,10);
+  mkFishingSpot(mw.cx-30+9,mw.cz+30);mkFishingSpot(mw.cx-30-9,mw.cz+30);
+  mkFishingSpot(mw.cx+264*Math.cos(1.2),mw.cz+264*Math.sin(1.2)); // shoreline spot (r*0.8=264)
 
   ISLANDS.forEach(addDecorations);
   createClouds();
@@ -1940,7 +1989,7 @@ function renderNPCTab(){
     if(flvl.css==='closefriend'||flvl.css==='beloved'){const story=FRIENDSHIP_STORIES[activeNPC];if(story)html+='<div class="friend-story">'+story+'</div>'}
     if(flvl.css==='beloved'){const rwd=FRIENDSHIP_REWARDS[activeNPC];if(rwd)html+='<div class="friend-reward">Beloved Gift: <b>'+rwd.beloved_item+'</b> — '+rwd.beloved_desc+'</div>'}
     if(flvl.css==='friend'||flvl.css==='closefriend'||flvl.css==='beloved'){html+='<div class="friend-reward">Better prices: -10% buy cost, +10% sell value</div>'}
-    if(inv.berryPie>0||inv.herbStew>0||inv.dragonFeast>0){
+    if(inv.berryPie>0||inv.herbStew>0||inv.dragonFeast>0||inv.fishStew>0){
       html+='<div style="margin-top:12px;border-top:1px solid rgba(255,255,255,0.1);padding-top:8px"><div class="sec-label">Feed Dragon Cooked Food</div>';
       ['berryPie','herbStew','dragonFeast','fishStew'].forEach(id=>{
         if(inv[id]>0){const r=RECIPES.find(x=>x.id===id);html+='<div class="shop-item"><div class="shop-info"><div class="shop-name">'+r.name+' (have '+inv[id]+')</div><div class="shop-desc">+'+r.xp+' dragon XP</div></div><button class="shop-buy" onclick="feedDragonCooked(\''+id+'\');renderNPCTab()">Feed</button></div>'}
@@ -1995,7 +2044,7 @@ function buyFromNPC(idx){
   const finalPrice=Math.max(1,Math.floor(item.price*(1-disc)));
   if(gold<finalPrice)return;
   gold-=finalPrice;
-  if(item.resource){inv[item.resource]=(inv[item.resource]||0)+1;notify('Bought '+item.name+'!');flashBuyFeedback('-'+item.price+'g  +1 '+item.name)}
+  if(item.resource){inv[item.resource]=(inv[item.resource]||0)+1;notify('Bought '+item.name+'!');flashBuyFeedback('-'+finalPrice+'g  +1 '+item.name)}
   if(item.recipeId){const r=RECIPES.find(x=>x.id===item.recipeId);if(r)r.known=true;notify('Learned recipe: '+item.name+'!','epic');flashBuyFeedback('Learned: '+item.name+'!');saveGame()}
   if(item.upgrade){upgrades[item.upgrade]=true;notify('Purchased: '+item.name+'!','epic');flashBuyFeedback(item.name+' Unlocked!');saveGame()}
   renderNPCTab();
@@ -2282,9 +2331,9 @@ function findNearestInteractable(){
 function updatePlayer(dt){
   if(isRiding){updateRiding(dt);return}
   const prevX=playerPos.x, prevZ=playerPos.z;
-  const moveDir=new THREE.Vector3();
-  const forward=new THREE.Vector3(-Math.sin(cameraYaw),0,-Math.cos(cameraYaw));
-  const right=new THREE.Vector3(-forward.z,0,forward.x);
+  const moveDir=_tv1.set(0,0,0);
+  const forward=_tv2.set(-Math.sin(cameraYaw),0,-Math.cos(cameraYaw));
+  const right=_tv3.set(-forward.z,0,forward.x);
   if(keys['w']||keys['arrowup'])moveDir.add(forward);
   if(keys['s']||keys['arrowdown'])moveDir.sub(forward);
   if(keys['a']||keys['arrowleft'])moveDir.sub(right);
@@ -2319,13 +2368,13 @@ function updatePlayer(dt){
   const ci=getCurrentIsland(playerPos.x,playerPos.z);
   if(ci&&ci.name!==lastIslandName){lastIslandName=ci.name;showIslandName(ci.name)}
 }
-function showIslandName(name){const el=document.getElementById('island-name');el.textContent=name;el.style.display='block';el.style.animation='none';el.offsetHeight;el.style.animation='fadeIsland 3s forwards';setTimeout(()=>el.style.display='none',3000)}
+function showIslandName(name){const el=document.getElementById('island-name');el.textContent=name;el.style.display='block';el.style.animation='none';el.offsetHeight;el.style.animation='fadeIsland 3s forwards';if(islandNameTimeout)clearTimeout(islandNameTimeout);islandNameTimeout=setTimeout(()=>el.style.display='none',3000)}
 
 // ===== RIDING =====
 function updateRiding(dt){
-  const moveDir=new THREE.Vector3();
-  const forward=new THREE.Vector3(-Math.sin(cameraYaw),0,-Math.cos(cameraYaw));
-  const right=new THREE.Vector3(-forward.z,0,forward.x);
+  const moveDir=_tv1.set(0,0,0);
+  const forward=_tv2.set(-Math.sin(cameraYaw),0,-Math.cos(cameraYaw));
+  const right=_tv3.set(-forward.z,0,forward.x);
   if(keys['w']||keys['arrowup'])moveDir.add(forward);if(keys['s']||keys['arrowdown'])moveDir.sub(forward);
   if(keys['a']||keys['arrowleft'])moveDir.sub(right);if(keys['d']||keys['arrowright'])moveDir.add(right);
   if(moveDir.length()>0.01)moveDir.normalize();
@@ -2348,7 +2397,7 @@ function updateRiding(dt){
 // ===== DRAGON AI =====
 function dragonFaceDir(dx,dz,dt,sp){const tr=Math.atan2(dx,dz);let d=tr-dragonGroup.rotation.y;while(d>Math.PI)d-=Math.PI*2;while(d<-Math.PI)d+=Math.PI*2;dragonGroup.rotation.y+=d*Math.min(1,(sp||5)*dt)}
 function dragonMoveTo(tx,tz,sp,dt){const dx=tx-dragon.pos.x,dz=tz-dragon.pos.z,dist=Math.sqrt(dx*dx+dz*dz);if(dist<0.5)return dist;const step=Math.min(sp*dt,dist);dragon.pos.x+=(dx/dist)*step;dragon.pos.z+=(dz/dist)*step;dragonFaceDir(dx,dz,dt,6);return dist}
-function getDragonSnout(){const s=dragonGroup.userData.scale||0.5;const d=new THREE.Vector3(0,0.3*s,2*s);d.applyQuaternion(dragonGroup.quaternion);return dragonGroup.position.clone().add(d)}
+function getDragonSnout(){const s=dragonGroup.userData.scale||0.5;_tv4.set(0,0.3*s,2*s).applyQuaternion(dragonGroup.quaternion).add(dragonGroup.position);return _tv4}
 
 function updateDragon(dt){
   if(isRiding){dragonAnimCycle+=dt*(isFlying?6:3);const wf=Math.sin(dragonAnimCycle)*(isFlying?0.8:0.3);if(dragonGroup.userData.wingL){dragonGroup.userData.wingL.rotation.z=wf;dragonGroup.userData.wingR.rotation.z=-wf}return}
@@ -2371,7 +2420,7 @@ function updateDragon(dt){
     if(task.phase==='running'){const d=dragonMoveTo(tx,tz,baseSpd*1.4,dt);isMoving=d>2;if(d<=2.5){task.phase='arriving';task.timer=0.5;dragonFaceDir(tx-dragon.pos.x,tz-dragon.pos.z,dt,20)}}
     else if(task.phase==='arriving'){task.timer-=dt;dragonFaceDir(tx-dragon.pos.x,tz-dragon.pos.z,dt,10);if(task.timer<=0){task.phase='breathing';task.timer=1.2;dragon.breathTimer=1.2}}
     else if(task.phase==='breathing'){task.timer-=dt;dragonFaceDir(tx-dragon.pos.x,tz-dragon.pos.z,dt,10);
-      const sn=getDragonSnout(),bd=new THREE.Vector3(tx-dragon.pos.x,0.3,tz-dragon.pos.z).normalize();
+      const sn=getDragonSnout(),bd=_tv1.set(tx-dragon.pos.x,0.3,tz-dragon.pos.z).normalize();
       if(Math.random()<0.6){const pal=SPECIES[dragon.species].pal[dragon.stage];spawnFireBreath(sn,bd,pal.main,pal.accent,2)}
       if(task.timer<=0){if(task.type==='gather'&&t.hasItems){t.interact();if(task.bonus>0){const res=t.type.includes('apple')?'apple':t.type.includes('berry')?'berry':t.type.includes('herb')?'herb':t.type.includes('mushroom')?'mushroom':t.type.includes('choppable')?'wood':t.type.includes('stone')?'stone':t.type.includes('iron')?'iron':'crystal';inv[res]+=task.bonus;notify('Dragon bonus: +'+task.bonus+'!')}}
         else if(task.type==='tend'){const spdup=dragon.stage==='adult'?15:dragon.stage==='teen'?10:5;farmPlots.forEach(p=>{if(p.state==='growing'){p.growTimer=Math.max(0,p.growTimer-spdup);p.updateVis()}});notify('Dragon tended crops!')}
@@ -2386,11 +2435,11 @@ function updateDragon(dt){
   // Auto crop tend
   if(dragon.befriended&&dragon.autoHelpCooldown<=0&&!dragon.helpTask){interactables.forEach(obj=>{if(obj.type==='farm_plot'&&obj.state==='growing'){const d=Math.sqrt((dragon.pos.x-obj.x)**2+(dragon.pos.z-obj.z)**2);if(d<10){obj.growTimer=Math.max(0,obj.growTimer-(dragon.stage==='adult'?3:dragon.stage==='teen'?2:0.5)*dt)}}})}
   // Trust>=50: auto-help gather nearby resources
-  if(dragon.trust>=50&&dragon.befriended&&dragon.autoHelpCooldown<=0&&!dragon.helpTask){let aN=null,aD=15;interactables.forEach(obj=>{if(obj.type==='dragon'||obj.type==='npc'||obj.type==='cook_pot'||obj.type==='farm_plot')return;if(!obj.hasItems)return;const d=Math.sqrt((dragon.pos.x-obj.x)**2+(dragon.pos.z-obj.z)**2);if(d<aD){aD=d;aN=obj}});if(aN&&Math.random()<0.01){const bonus=dragon.stage==='adult'?3:dragon.stage==='teen'?2:1;dragon.helpTask={type:'gather',target:aN,phase:'running',timer:0,bonus};dragon.autoHelpCooldown=8}}
+  if(dragon.trust>=50&&dragon.befriended&&dragon.autoHelpCooldown<=0&&!dragon.helpTask){let aN=null,aD=15;interactables.forEach(obj=>{if(obj.type==='dragon'||obj.type==='npc'||obj.type==='cook_pot'||obj.type==='farm_plot'||obj.type==='fishing_spot')return;if(!obj.hasItems)return;const d=Math.sqrt((dragon.pos.x-obj.x)**2+(dragon.pos.z-obj.z)**2);if(d<aD){aD=d;aN=obj}});if(aN&&Math.random()<0.01){const bonus=dragon.stage==='adult'?3:dragon.stage==='teen'?2:1;dragon.helpTask={type:'gather',target:aN,phase:'running',timer:0,bonus};dragon.autoHelpCooldown=8}}
   // Mood-based idle animations
   if(!isMoving&&!dragon.helpTask&&!dragon.isNapping){if(dragon.mood==='playful')dragon.tailWag+=dt*4;if(dragon.mood==='sleepy'){dragonGroup.position.y-=0.1*s;if(dragonGroup.userData.head)dragonGroup.userData.head.rotation.x+=(0.08-dragonGroup.userData.head.rotation.x)*dt}}
   // Trust>=80: affectionate sparks
-  if(dragon.trust>=80&&distP<6&&!dragon.helpTask&&Math.random()<0.005){dragon.happyTimer=Math.max(dragon.happyTimer,0.5);spawnParticles(dragonGroup.position.clone().add(new THREE.Vector3(0,1.5*s,0)),0xff6b9d,3,0.8,2,1,0.08)}
+  if(dragon.trust>=80&&distP<6&&!dragon.helpTask&&Math.random()<0.005){dragon.happyTimer=Math.max(dragon.happyTimer,0.5);spawnParticles(_tv1.copy(dragonGroup.position).add(_tv2.set(0,1.5*s,0)),0xff6b9d,3,0.8,2,1,0.08)}
   // Position
   const th=getTerrainHeight(dragon.pos.x,dragon.pos.z);dragon.pos.y=th;
   const yOff=dragon.stage==='adult'?0.5:dragon.stage==='teen'?0.2:0;
@@ -2404,7 +2453,7 @@ function updateDragon(dt){
   if(distP<8||dragon.happyTimer>0)dragon.tailWag+=dt*8;else dragon.tailWag+=dt*2;
   if(dragonGroup.userData.tail)dragonGroup.userData.tail.rotation.y=Math.sin(dragon.tailWag)*((distP<8||dragon.happyTimer>0)?0.3:0.1);
   // Head look
-  if(dragonGroup.userData.head){let lx=dx,lz=dz;if(dragon.helpTask&&dragon.helpTask.phase!=='running'){lx=dragon.helpTask.target.x-dragon.pos.x;lz=dragon.helpTask.target.z-dragon.pos.z}const ht=new THREE.Vector3(lx,0,lz);if(ht.length()>0.1){ht.normalize();const la=Math.atan2(ht.x,ht.z)-dragonGroup.rotation.y;dragonGroup.userData.head.rotation.y+=(Math.max(-0.6,Math.min(0.6,la))*0.4-dragonGroup.userData.head.rotation.y)*3*dt;if(distP<5&&!dragon.helpTask)dragonGroup.userData.head.rotation.x+=(0.2-dragonGroup.userData.head.rotation.x)*2*dt;else if(dragon.breathTimer>0)dragonGroup.userData.head.rotation.x+=(-0.15-dragonGroup.userData.head.rotation.x)*3*dt;else dragonGroup.userData.head.rotation.x*=0.95}}
+  if(dragonGroup.userData.head){let lx=dx,lz=dz;if(dragon.helpTask&&dragon.helpTask.phase!=='running'){lx=dragon.helpTask.target.x-dragon.pos.x;lz=dragon.helpTask.target.z-dragon.pos.z}const ht=_tv1.set(lx,0,lz);if(ht.length()>0.1){ht.normalize();const la=Math.atan2(ht.x,ht.z)-dragonGroup.rotation.y;dragonGroup.userData.head.rotation.y+=(Math.max(-0.6,Math.min(0.6,la))*0.4-dragonGroup.userData.head.rotation.y)*3*dt;if(distP<5&&!dragon.helpTask)dragonGroup.userData.head.rotation.x+=(0.2-dragonGroup.userData.head.rotation.x)*2*dt;else if(dragon.breathTimer>0)dragonGroup.userData.head.rotation.x+=(-0.15-dragonGroup.userData.head.rotation.x)*3*dt;else dragonGroup.userData.head.rotation.x*=0.95}}
   // Legs
   if(dragonGroup.userData.legs&&dragonGroup.userData.legs.length>=4){const ls=isMoving?Math.sin(dragonAnimCycle*3)*0.3:0;dragonGroup.userData.legs[0].rotation.x=ls;dragonGroup.userData.legs[1].rotation.x=-ls;dragonGroup.userData.legs[2].rotation.x=-ls;dragonGroup.userData.legs[3].rotation.x=ls}
   if(dragonGroup.userData.glow)dragonGroup.userData.glow.intensity=0.3+Math.sin(dragonAnimCycle)*0.15;
@@ -2430,40 +2479,35 @@ function updateDayNight(dt){
   const mA=sunAngle+Math.PI,mX=tgt.x+Math.cos(mA)*sR*0.3,mY=Math.sin(mA)*sR*0.8,mZ=tgt.z+Math.sin(mA)*sR*0.5;
   if(moonVisRef){moonVisRef.position.set(mX,mY,mZ);moonVisRef.visible=mY>-20}
   const el=Math.sin(sunAngle),sf=Math.max(0,Math.min(1,(el+0.15)/1.15)),nf=1-sf;
-  const sc=new THREE.Color();
-  if(sf>0.5)sc.lerpColors(new THREE.Color(0xff9944),new THREE.Color(0xfff8e0),(sf-0.5)*2);
-  else sc.lerpColors(new THREE.Color(0x223355),new THREE.Color(0xff9944),sf*2);
-  sun.color.copy(sc);sun.intensity=0.05+sf*1.15;sun.castShadow=sf>0.1;
-  if(sunVisRef)sunVisRef.material.color.lerpColors(new THREE.Color(0xff6633),new THREE.Color(0xffffdd),sf);
+  if(sf>0.5)_tc1.lerpColors(DN_SUN_A,DN_SUN_B,(sf-0.5)*2);
+  else _tc1.lerpColors(DN_SUN_C,DN_SUN_A,sf*2);
+  sun.color.copy(_tc1);sun.intensity=0.05+sf*1.15;sun.castShadow=sf>0.1;
+  if(sunVisRef)sunVisRef.material.color.lerpColors(DN_SUNVIS_A,DN_SUNVIS_B,sf);
   if(sunGlowRef)sunGlowRef.material.opacity=0.04+sf*0.1;
   if(moonLight){moonLight.position.set(mX,Math.max(mY,20),mZ);moonLight.intensity=nf*0.6}
   if(ambientLight)ambientLight.intensity=0.08+nf*0.18;
-  if(hemiLight){hemiLight.color.lerpColors(new THREE.Color(0x112244),new THREE.Color(0x99ccff),sf);hemiLight.groundColor.lerpColors(new THREE.Color(0x111122),new THREE.Color(0x557744),sf);hemiLight.intensity=0.15+sf*0.55}
+  if(hemiLight){hemiLight.color.lerpColors(DN_HEMI_SKY_A,DN_HEMI_SKY_B,sf);hemiLight.groundColor.lerpColors(DN_HEMI_GND_A,DN_HEMI_GND_B,sf);hemiLight.intensity=0.15+sf*0.55}
   if(fillLight&&fillLight.intensity!==undefined)fillLight.intensity=sf*0.3;
   const skyAttr=skyDome.geometry.attributes.color,skyPos=skyDome.geometry.attributes.position;
-  const sL=new THREE.Color(),sM2=new THREE.Color(),sH=new THREE.Color();
-  const dL=new THREE.Color(0xffe0b0),dM=new THREE.Color(0x99ccee),dH=new THREE.Color(0x2244aa);
-  const dwL=new THREE.Color(0xff7744),dwM=new THREE.Color(0xffaa66),dwH=new THREE.Color(0x5566aa);
-  const dkL=new THREE.Color(0xcc4455),dkM=new THREE.Color(0x8844aa),dkH=new THREE.Color(0x332266);
-  const nL=new THREE.Color(0x0a0a1a),nM=new THREE.Color(0x0b1128),nH=new THREE.Color(0x060818);
-  if(phase==='night'){sL.copy(nL);sM2.copy(nM);sH.copy(nH)}
-  else if(phase==='dawn'){const f=(t-0.20)/0.10;sL.lerpColors(nL,dwL,f);sM2.lerpColors(nM,dwM,f);sH.lerpColors(nH,dwH,f)}
-  else if(phase==='morning'){const f=(t-0.30)/0.15;sL.lerpColors(dwL,dL,f);sM2.lerpColors(dwM,dM,f);sH.lerpColors(dwH,dH,f)}
-  else if(phase==='noon'||phase==='afternoon'){const f=phase==='afternoon'?1-(t-0.55)/0.15:1;sL.lerpColors(dkL,dL,f);sM2.lerpColors(dkM,dM,f);sH.lerpColors(dkH,dH,f)}
-  else if(phase==='dusk'){const f=(t-0.70)/0.10;sL.lerpColors(dkL,nL,f);sM2.lerpColors(dkM,nM,f);sH.lerpColors(dkH,nH,f)}
-  const tc=new THREE.Color();
+  const sL=_tc1,sM2=_tc2,sH=_tc3;
+  if(phase==='night'){sL.copy(DN_SKY_NIGHT_L);sM2.copy(DN_SKY_NIGHT_M);sH.copy(DN_SKY_NIGHT_H)}
+  else if(phase==='dawn'){const f=(t-0.20)/0.10;sL.lerpColors(DN_SKY_NIGHT_L,DN_SKY_DAWN_L,f);sM2.lerpColors(DN_SKY_NIGHT_M,DN_SKY_DAWN_M,f);sH.lerpColors(DN_SKY_NIGHT_H,DN_SKY_DAWN_H,f)}
+  else if(phase==='morning'){const f=(t-0.30)/0.15;sL.lerpColors(DN_SKY_DAWN_L,DN_SKY_DAY_L,f);sM2.lerpColors(DN_SKY_DAWN_M,DN_SKY_DAY_M,f);sH.lerpColors(DN_SKY_DAWN_H,DN_SKY_DAY_H,f)}
+  else if(phase==='noon'||phase==='afternoon'){const f=phase==='afternoon'?1-(t-0.55)/0.15:1;sL.lerpColors(DN_SKY_DUSK_L,DN_SKY_DAY_L,f);sM2.lerpColors(DN_SKY_DUSK_M,DN_SKY_DAY_M,f);sH.lerpColors(DN_SKY_DUSK_H,DN_SKY_DAY_H,f)}
+  else if(phase==='dusk'){const f=(t-0.70)/0.10;sL.lerpColors(DN_SKY_DUSK_L,DN_SKY_NIGHT_L,f);sM2.lerpColors(DN_SKY_DUSK_M,DN_SKY_NIGHT_M,f);sH.lerpColors(DN_SKY_DUSK_H,DN_SKY_NIGHT_H,f)}
+  const tc=_tc4;
   for(let i=0;i<skyPos.count;i++){const y=skyPos.getY(i),vt=Math.max(0,y/2000);
     if(vt<0.15)tc.lerpColors(sL,sM2,vt/0.15);else if(vt<0.5)tc.lerpColors(sM2,sH,(vt-0.15)/0.35);else tc.copy(sH);
     skyAttr.array[i*3]=tc.r;skyAttr.array[i*3+1]=tc.g;skyAttr.array[i*3+2]=tc.b}
   skyAttr.needsUpdate=true;
   if(starField){starField.material.opacity=Math.max(0,nf-0.3)/0.7*0.8;starField.position.set(tgt.x,0,tgt.z)}
-  const wc=new THREE.Color();
-  if(phase==='night')wc.set(0x0a1a33);else if(phase==='dawn'){const f=(t-0.20)/0.10;wc.lerpColors(new THREE.Color(0x0a1a33),new THREE.Color(0x996655),f)}
-  else if(phase==='morning'){const f=(t-0.30)/0.15;wc.lerpColors(new THREE.Color(0x996655),new THREE.Color(0x1a8fcc),f)}
-  else if(phase==='noon')wc.set(0x1a8fcc);else if(phase==='afternoon'){const f=(t-0.55)/0.15;wc.lerpColors(new THREE.Color(0x1a8fcc),new THREE.Color(0x553366),f)}
-  else if(phase==='dusk'){const f=(t-0.70)/0.10;wc.lerpColors(new THREE.Color(0x553366),new THREE.Color(0x0a1a33),f)}
+  const wc=_tc1;
+  if(phase==='night')wc.set(0x0a1a33);else if(phase==='dawn'){const f=(t-0.20)/0.10;wc.lerpColors(DN_WATER_NIGHT,DN_WATER_DAWN,f)}
+  else if(phase==='morning'){const f=(t-0.30)/0.15;wc.lerpColors(DN_WATER_DAWN,DN_WATER_DAY,f)}
+  else if(phase==='noon')wc.set(0x1a8fcc);else if(phase==='afternoon'){const f=(t-0.55)/0.15;wc.lerpColors(DN_WATER_DAY,DN_WATER_DUSK,f)}
+  else if(phase==='dusk'){const f=(t-0.70)/0.10;wc.lerpColors(DN_WATER_DUSK,DN_WATER_NIGHT,f)}
   water.material.color.copy(wc);water.material.opacity=0.65+sf*0.1;
-  if(scene.fog)scene.fog.color.lerpColors(new THREE.Color(0x0a0f1a),new THREE.Color(0x88ccee),sf);
+  if(scene.fog)scene.fog.color.lerpColors(DN_FOG_NIGHT,DN_FOG_DAY,sf);
   renderer.toneMappingExposure=0.6+sf*0.7;
   const timeEl=document.getElementById('time-indicator');
   if(timeEl){document.getElementById('time-icon').textContent=phaseIcon;document.getElementById('time-label').textContent=phaseName}
@@ -2477,7 +2521,7 @@ function updateCamera(dt){
   const cx=tgt.x+Math.sin(cameraYaw)*Math.cos(cameraPitch)*dist;
   const cz=tgt.z+Math.cos(cameraYaw)*Math.cos(cameraPitch)*dist;
   const cy=tgt.y+height+Math.sin(cameraPitch)*dist*0.5;
-  camera.position.lerp(new THREE.Vector3(cx,cy,cz),Math.min(1,8*dt));
+  camera.position.lerp(_tv1.set(cx,cy,cz),Math.min(1,8*dt));
   camera.lookAt(tgt.x,tgt.y+2,tgt.z);
   skyDome.position.set(tgt.x,0,tgt.z);
 }
@@ -2618,7 +2662,7 @@ function spawnSavedDeco(type,x,y,z){
 }
 function updateDecoGhost(){
   if(!decoGhost||!decoPlacing)return;
-  const forward=new THREE.Vector3(-Math.sin(cameraYaw),0,-Math.cos(cameraYaw));
+  const forward=_tv1.set(-Math.sin(cameraYaw),0,-Math.cos(cameraYaw));
   const px=playerPos.x+forward.x*4,pz=playerPos.z+forward.z*4;
   const py=getTerrainHeight(px,pz);
   decoGhost.position.set(px,py,pz);
@@ -2645,10 +2689,10 @@ function togglePhotoMode(){
     document.getElementById('minimap').style.display='none';
     document.getElementById('quest-detail').style.display='none';
     document.getElementById('prompt').style.display='none';
+    notify('Photo Mode');
     document.getElementById('notifications').style.display='none';
     const ti=document.getElementById('time-indicator');if(ti)ti.style.display='none';
     overlay.style.display='block';
-    notify('Photo Mode');
   } else {
     // Restore camera
     cameraYaw=savedCamYaw;cameraPitch=savedCamPitch;
@@ -2666,9 +2710,9 @@ function togglePhotoMode(){
 function updatePhotoMode(dt){
   if(!photoMode)return;
   const speed=30;
-  const forward=new THREE.Vector3(-Math.sin(photoCamYaw),0,-Math.cos(photoCamYaw));
-  const right=new THREE.Vector3(-forward.z,0,forward.x);
-  const moveDir=new THREE.Vector3();
+  const forward=_tv1.set(-Math.sin(photoCamYaw),0,-Math.cos(photoCamYaw));
+  const right=_tv2.set(-forward.z,0,forward.x);
+  const moveDir=_tv3.set(0,0,0);
   if(keys['w']||keys['arrowup'])moveDir.add(forward);
   if(keys['s']||keys['arrowdown'])moveDir.sub(forward);
   if(keys['a']||keys['arrowleft'])moveDir.sub(right);
@@ -2679,7 +2723,7 @@ function updatePhotoMode(dt){
   photoCamPos.add(moveDir.multiplyScalar(speed*dt));
   photoCamPitch=Math.max(-1.4,Math.min(1.4,photoCamPitch));
   camera.position.copy(photoCamPos);
-  const lookTarget=new THREE.Vector3(
+  const lookTarget=_tv4.set(
     photoCamPos.x-Math.sin(photoCamYaw)*Math.cos(photoCamPitch)*10,
     photoCamPos.y-Math.sin(photoCamPitch)*10,
     photoCamPos.z-Math.cos(photoCamYaw)*Math.cos(photoCamPitch)*10
@@ -2690,16 +2734,16 @@ function updatePhotoMode(dt){
 // ===== CONTROLS =====
 function setupControls(){
   document.addEventListener('keydown',e=>{
-    if(e.key==='Escape'){if(decoPlacing){cancelDecoPlacement();return}if(fishingActive){cancelFishing();return}if(menuOpen){if(document.getElementById('npc-menu').style.display==='flex')closeNPCMenu();else if(document.getElementById('cook-menu').style.display==='flex')closeCookMenu();else if(document.getElementById('deco-menu').style.display==='flex')closeDecoMenu();return}}
+    if(e.key==='Escape'){if(photoMode){togglePhotoMode();return}if(decoPlacing){cancelDecoPlacement();return}if(fishingActive){cancelFishing();return}if(menuOpen){if(document.getElementById('npc-menu').style.display==='flex')closeNPCMenu();else if(document.getElementById('cook-menu').style.display==='flex')closeCookMenu();else if(document.getElementById('deco-menu').style.display==='flex')closeDecoMenu();return}}
     if(e.key==='Tab'&&gameStarted&&!menuOpen&&!photoMode&&!fishingActive){e.preventDefault();openDecoMenu();return}
     if(e.key.toLowerCase()==='p'&&gameStarted&&!menuOpen&&!decoPlacing&&!fishingActive){togglePhotoMode();return}
     if(menuOpen)return;
     keys[e.key.toLowerCase()]=true;
     if(photoMode)return;
     if(e.key.toLowerCase()==='e'&&gameStarted){if(fishingActive){attemptCatch()}else{const t=findNearestInteractable();if(t)t.interact()}}
-    if(e.key.toLowerCase()==='r'&&gameStarted&&!isRiding&&dragon.stage==='adult'&&dragon.befriended){dragon.calling=true;dragon.helpTask=null;dragon.curiosityTarget=null;dragon.isNapping=false;notify('Calling dragon...')}
-    if(e.key.toLowerCase()==='f'&&gameStarted){if(isRiding&&inv.apple>0){inv.apple--;dragon.xp++;dragon.happyTimer=1;dragon.trust=Math.min(100,dragon.trust+3);dragon.moodWeights.happy+=2;const dp=dragonGroup.position.clone();dp.y+=2;spawnParticles(dp,0xff6688,6,1,3,1.2,0.13);notify('Fed while riding! +1 XP');checkCoreMemory();checkDragonEvolve()}else dragonHelp()}
-    if(e.key.toLowerCase()==='g'&&gameStarted){petDragon()}
+    if(e.key.toLowerCase()==='r'&&gameStarted&&!fishingActive&&!isRiding&&dragon.stage==='adult'&&dragon.befriended){dragon.calling=true;dragon.helpTask=null;dragon.curiosityTarget=null;dragon.isNapping=false;notify('Calling dragon...')}
+    if(e.key.toLowerCase()==='f'&&gameStarted&&!fishingActive){if(isRiding&&inv.apple>0){inv.apple--;dragon.xp++;dragon.happyTimer=1;dragon.trust=Math.min(100,dragon.trust+3);dragon.moodWeights.happy+=2;const dp=dragonGroup.position.clone();dp.y+=2;spawnParticles(dp,0xff6688,6,1,3,1.2,0.13);notify('Fed while riding! +1 XP');checkCoreMemory();checkDragonEvolve()}else dragonHelp()}
+    if(e.key.toLowerCase()==='g'&&gameStarted&&!fishingActive){petDragon()}
     if(e.key===' '&&gameStarted&&!isRiding){if(isGliding){isGliding=false}else{const now=Date.now();if(now-lastSpaceTime<350&&!isGrounded){isGliding=true;playerVelY=-1.5}lastSpaceTime=now}}
   });
   document.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false});
