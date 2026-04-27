@@ -804,7 +804,7 @@ function createDragonModel(stage) {
   // === WINGS with bone structure ===
   const ws = s * (stage === 'kid' ? 1.0 : stage === 'teen' ? 1.6 : 2.0);
 
-  // Wing membrane shape (defined in flat XY, extends in +X, +Y)
+  // Wing shape in XY: +X = outward, +Y = trailing edge
   const wingShape = new THREE.Shape();
   wingShape.moveTo(0, 0);
   wingShape.quadraticCurveTo(ws * 0.3, ws * 0.15, ws * 0.7, ws * 0.6);
@@ -817,37 +817,35 @@ function createDragonModel(stage) {
   wingShape.lineTo(0, 0);
 
   [-1, 1].forEach(side => {
-    // Outer group: positioned on body, used for flap animation (rotation.z)
+    // Outer group: positioned on body, rotation.z = flap animation
     const wingGroup = new THREE.Group();
     wingGroup.position.set(side * 0.6 * s, 0.5 * s, -0.1 * s);
 
-    // Inner orient group: rotates everything together so membrane + bones share the same space
-    const orient = new THREE.Group();
-    orient.rotation.y = side * Math.PI / 2;
-    orient.rotation.x = -0.2;
-    wingGroup.add(orient);
+    // Inner group: rotates XY shape into XZ plane (horizontal), mirrors for left wing
+    const wingInner = new THREE.Group();
+    wingInner.rotation.x = -Math.PI / 2;
+    if (side === -1) wingInner.scale.x = -1;
+    wingGroup.add(wingInner);
 
-    // Membrane (no individual rotation — orient group handles it)
+    // Membrane — flat in XY, the inner group lays it horizontal
     const membrane = new THREE.Mesh(new THREE.ShapeGeometry(wingShape), wingMat);
-    orient.add(membrane);
+    wingInner.add(membrane);
 
-    // Wing bones (positions match the membrane's XY shape coordinates)
-    const bonePositions = [
-      [[0, 0, 0], [ws*0.7, ws*0.6, 0]],
-      [[0, 0, 0], [ws*1.2, ws*0.55, 0]],
-      [[0, 0, 0], [ws*1.5, ws*0.9, 0]],
+    // Wing bones — same XY coordinate space as the shape
+    const boneEnds = [
+      [ws*0.7, ws*0.6],
+      [ws*1.2, ws*0.55],
+      [ws*1.5, ws*0.9],
     ];
-    bonePositions.forEach(([start, end]) => {
-      const len = Math.sqrt((end[0]-start[0])**2 + (end[1]-start[1])**2);
+    boneEnds.forEach(([ex, ey]) => {
+      const len = Math.sqrt(ex*ex + ey*ey);
       const bone = new THREE.Mesh(
         new THREE.CylinderGeometry(0.03 * s, 0.02 * s, len, 4),
         wingBoneMat
       );
-      bone.position.set(
-        (start[0]+end[0])/2, (start[1]+end[1])/2, 0
-      );
-      bone.rotation.z = Math.atan2(end[0]-start[0], end[1]-start[1]);
-      orient.add(bone);
+      bone.position.set(ex / 2, ey / 2, 0.02);
+      bone.rotation.z = Math.atan2(ex, ey);
+      wingInner.add(bone);
     });
 
     // Wing claw at tip
@@ -857,7 +855,7 @@ function createDragonModel(stage) {
     );
     wingClaw.position.set(ws * 1.55, ws * 0.9, 0);
     wingClaw.rotation.z = 0.3;
-    orient.add(wingClaw);
+    wingInner.add(wingClaw);
 
     g.add(wingGroup);
     if (side === -1) g.userData.wingL = wingGroup;
@@ -1835,8 +1833,8 @@ function updateDragon(dt) {
     dragonAnimCycle += dt * (isFlying ? 6 : 3);
     const wingFlap = Math.sin(dragonAnimCycle) * (isFlying ? 0.8 : 0.3);
     if (dragonGroup.userData.wingL) {
-      dragonGroup.userData.wingL.rotation.x = -0.2 + wingFlap;
-      dragonGroup.userData.wingR.rotation.x = -0.2 + wingFlap;
+      dragonGroup.userData.wingL.rotation.z = wingFlap;
+      dragonGroup.userData.wingR.rotation.z = -wingFlap;
     }
     return;
   }
