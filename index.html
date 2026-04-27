@@ -120,6 +120,7 @@ canvas{display:block}
     </div>
   </div>
   <button id="start-btn" onclick="startGame()">Begin Your Journey</button>
+  <button id="continue-btn" onclick="continueGame()" style="display:none;margin-top:10px;padding:10px 28px;font-size:16px;background:linear-gradient(135deg,#a855f7,#7c3aed);color:white;border:none;border-radius:8px;cursor:pointer;letter-spacing:1px">Continue Saved Game</button>
   <div class="ctrls">
     <span>WASD</span> Move &bull; <span>Mouse</span> Look &bull; <span>E</span> Interact &bull; <span>Space</span> Jump / Fly Up<br>
     <span>Shift</span> Fly Down &bull; <span>F</span> Dragon Help &bull; <span>Double-Space</span> Glide (Space again to stop)
@@ -354,6 +355,71 @@ const particles = [];
 const FOG_SIZE=100,FOG_CELL=30,FOG_OFFSET=1500;
 const fogGrid=new Uint8Array(FOG_SIZE*FOG_SIZE);
 let minimapTimer=0;
+let saveTimer=0;
+const SAVE_KEY='dragonIsland_save';
+
+// ===== SAVE/LOAD =====
+function saveGame(){
+  const data={
+    v:2,
+    player:{x:playerPos.x,y:playerPos.y,z:playerPos.z,facing:playerFacing},
+    dragon:{species:dragon.species,stage:dragon.stage,xp:dragon.xp,befriended:dragon.befriended,fedCooked:dragon.fedCooked,pos:{x:dragon.pos.x,z:dragon.pos.z}},
+    inv:{...inv},gold,
+    quests:{},recipes:[],upgrades:{...upgrades},
+    mended:[...mendedBuildings],artefacts:[...foundArtefacts],
+    fog:btoa(String.fromCharCode(...fogGrid)),
+    farms:farmPlots.map(p=>({state:p.state,cropType:p.cropType,growTimer:p.growTimer})),
+  };
+  for(const[id,st] of Object.entries(npcState))data.quests[id]={qi:st.questIndex,fr:st.friendship};
+  RECIPES.forEach((r,i)=>{if(r.known)data.recipes.push(i)});
+  try{localStorage.setItem(SAVE_KEY,JSON.stringify(data));return true}catch(e){return false}
+}
+function loadGame(){
+  try{
+    const raw=localStorage.getItem(SAVE_KEY);if(!raw)return false;
+    const d=JSON.parse(raw);if(!d||!d.v)return false;
+    // Player
+    playerPos.set(d.player.x,d.player.y,d.player.z);playerFacing=d.player.facing||0;
+    // Dragon
+    dragon.species=d.dragon.species;dragon.stage=d.dragon.stage;dragon.xp=d.dragon.xp;
+    dragon.befriended=d.dragon.befriended;dragon.fedCooked=d.dragon.fedCooked||0;
+    dragon.pos.set(d.dragon.pos.x,0,d.dragon.pos.z);
+    // Inventory
+    for(const k in d.inv)inv[k]=d.inv[k];
+    gold=d.gold||0;
+    // Quests
+    for(const[id,st] of Object.entries(d.quests)){if(npcState[id]){npcState[id].questIndex=st.qi;npcState[id].friendship=st.fr||0;
+      const def=NPC_DEFS[id];for(let i=0;i<st.qi&&i<def.quests.length;i++)def.quests[i]._accepted=true;
+      if(st.qi<def.quests.length)def.quests[st.qi]._accepted=true;}}
+    // Recipes
+    if(d.recipes)d.recipes.forEach(i=>{if(RECIPES[i])RECIPES[i].known=true});
+    // Upgrades
+    if(d.upgrades)for(const k in d.upgrades)upgrades[k]=d.upgrades[k];
+    // Mended buildings
+    if(d.mended)d.mended.forEach(id=>mendedBuildings.add(id));
+    // Artefacts
+    if(d.artefacts)d.artefacts.forEach(id=>foundArtefacts.add(id));
+    // Fog
+    if(d.fog){const bytes=atob(d.fog);for(let i=0;i<bytes.length&&i<fogGrid.length;i++)fogGrid[i]=bytes.charCodeAt(i)}
+    // Farms
+    if(d.farms)d.farms.forEach((fd,i)=>{if(farmPlots[i]){farmPlots[i].state=fd.state;farmPlots[i].cropType=fd.cropType;farmPlots[i].growTimer=fd.growTimer;farmPlots[i].updateVis()}});
+    return true;
+  }catch(e){console.error('Load failed:',e);return false}
+}
+function applySaveToWorld(){
+  // Rebuild dragon model for loaded species/stage
+  scene.remove(dragonGroup);dragonGroup=createDragonModel(dragon.species,dragon.stage);
+  dragon.pos.y=getTerrainHeight(dragon.pos.x,dragon.pos.z);
+  dragonGroup.position.set(dragon.pos.x,dragon.pos.y,dragon.pos.z);scene.add(dragonGroup);
+  // Apply player position
+  playerGroup.position.copy(playerPos);playerGroup.rotation.y=playerFacing;
+  // Mend buildings
+  for(const id of mendedBuildings){if(mendableObjs[id]){mendableObjs[id].ruinG.visible=false;mendableObjs[id].intactG.visible=true}}
+  // Hide collected artefacts
+  interactables.forEach(obj=>{if(obj.type==='artefact'&&foundArtefacts.has(obj.id)){obj.collected=true;obj.group.visible=false}});
+}
+function deleteSave(){localStorage.removeItem(SAVE_KEY)}
+function hasSave(){return !!localStorage.getItem(SAVE_KEY)}
 
 // ===== PARTICLE SYSTEM =====
 function spawnParticles(pos, color, count, spread, speed, life, size) {
@@ -695,7 +761,7 @@ function evolveDragon(ns){
   const op=dragonGroup.position.clone(),or=dragonGroup.rotation.y;scene.remove(dragonGroup);dragon.stage=ns;
   dragonGroup=createDragonModel(dragon.species,ns);dragonGroup.position.copy(op);dragonGroup.rotation.y=or;scene.add(dragonGroup);
   spawnBurst(op,[0xffd700,0xffaa00,0xffffff,0x88ff88,0xff88ff],50);
-  notify(ns==='teen'?'Dragon evolved to TEEN! It can help gather resources!':'Dragon evolved to ADULT! Press E to RIDE and FLY!','epic');
+  notify(ns==='teen'?'Dragon evolved to TEEN! It can help gather resources!':'Dragon evolved to ADULT! Press E to RIDE and FLY!','epic');saveGame();
 }
 
 // ===== NPC MODEL =====
@@ -1131,8 +1197,8 @@ function buyFromNPC(idx){
   if(gold<item.price)return;
   gold-=item.price;
   if(item.resource)inv[item.resource]=(inv[item.resource]||0)+1;
-  if(item.recipeId){const r=RECIPES.find(x=>x.id===item.recipeId);if(r)r.known=true;notify('Learned recipe: '+item.name+'!','epic')}
-  if(item.upgrade){upgrades[item.upgrade]=true;notify('Purchased: '+item.name+'!','epic')}
+  if(item.recipeId){const r=RECIPES.find(x=>x.id===item.recipeId);if(r)r.known=true;notify('Learned recipe: '+item.name+'!','epic');saveGame()}
+  if(item.upgrade){upgrades[item.upgrade]=true;notify('Purchased: '+item.name+'!','epic');saveGame()}
   renderNPCTab();
 }
 function sellToNPC(res,price){if(inv[res]<=0)return;inv[res]--;gold+=price;notify('+'+price+' gold');renderNPCTab()}
@@ -1141,7 +1207,7 @@ function completeQuest(npcId){
   const def=NPC_DEFS[npcId];const st=npcState[npcId];const q=def.quests[st.questIndex];
   q.onComplete();st.questIndex++;
   spawnBurst(playerPos.clone().add(new THREE.Vector3(0,2,0)),[0xffd700,0xa855f7,0xffffff],20);
-  notify('Quest complete: '+q.title+'!','epic');renderNPCTab();
+  notify('Quest complete: '+q.title+'!','epic');saveGame();renderNPCTab();
 }
 
 // ===== COOKING =====
@@ -1532,6 +1598,7 @@ function animate(){
   const fpx=isRiding?dragonGroup.position.x:playerPos.x,fpz=isRiding?dragonGroup.position.z:playerPos.z;
   revealFog(fpx,fpz,isRiding?120:50);
   minimapTimer+=dt;if(minimapTimer>0.15){minimapTimer=0;drawMinimap()}
+  saveTimer+=dt;if(saveTimer>30){saveTimer=0;saveGame()}
   updateUI();renderer.render(scene,camera);
 }
 
@@ -1546,20 +1613,33 @@ function startGame(){
   if(!selectedSpecies)return;
   dragon.species=selectedSpecies;
   scene.remove(dragonGroup);dragonGroup=createDragonModel(dragon.species,dragon.stage);dragonGroup.position.copy(dragon.pos);dragonGroup.position.y=getTerrainHeight(dragon.pos.x,dragon.pos.z);scene.add(dragonGroup);
+  enterGame();
+  notify('Welcome! A baby '+SPECIES[selectedSpecies].name+' awaits you!');
+  notify('Talk to Elder Maren to begin your quest.');
+}
+function continueGame(){
+  if(!loadGame())return;
+  applySaveToWorld();
+  enterGame();
+  notify('Welcome back! Save loaded.');
+}
+function enterGame(){
   document.getElementById('start-screen').style.display='none';
   document.getElementById('hud').style.display='block';
   document.getElementById('dragon-panel').style.display='block';
   document.getElementById('crosshair').style.display='block';
   document.getElementById('minimap').style.display='block';
   document.getElementById('quest-detail').style.display='block';
-  revealFog(0,0,60);
+  revealFog(playerPos.x,playerPos.z,60);
   gameStarted=true;renderer.domElement.requestPointerLock();
-  notify('Welcome! A baby '+SPECIES[selectedSpecies].name+' awaits you!');
-  notify('Talk to Elder Maren to begin your quest.');
 }
 
 // ===== INIT =====
-function init(){setupScene();createTerrains();createPlayer();populateWorld();setupControls();animate()}
+function init(){
+  setupScene();createTerrains();createPlayer();populateWorld();setupControls();
+  if(hasSave())document.getElementById('continue-btn').style.display='block';
+  animate();
+}
 init();
 </script>
 </body>
